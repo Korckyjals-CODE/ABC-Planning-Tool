@@ -213,13 +213,28 @@ Public Sub GenerateRawGradebooks(ByVal strBimester As String)
         
         ' 4.5) Replace formulas by values in the single sheet's rectangular range
         If Not wbTemplate Is Nothing Then
+            ' Additional validation: check if workbook is still valid
             On Error Resume Next
-            ReplaceFormulasWithValues wbTemplate, logLines
+            Dim testName As String
+            testName = wbTemplate.Name
             If Err.Number <> 0 Then
-                Log logLines, "ERROR replacing formulas: " & templatePath & " | " & Err.Description
+                Log logLines, "WARN: Workbook object became invalid before ReplaceFormulasWithValues: " & templatePath
                 Err.Clear
+                Set wbTemplate = Nothing
             End If
             On Error GoTo ErrHandler
+            
+            If Not wbTemplate Is Nothing Then
+                On Error Resume Next
+                ReplaceFormulasWithValues wbTemplate, logLines
+                If Err.Number <> 0 Then
+                    Log logLines, "ERROR replacing formulas: " & templatePath & " | " & Err.Description
+                    Err.Clear
+                End If
+                On Error GoTo ErrHandler
+            Else
+                Log logLines, "SKIP replacing formulas - template workbook became invalid: " & templatePath
+            End If
         Else
             Log logLines, "SKIP replacing formulas - template workbook not available: " & templatePath
         End If
