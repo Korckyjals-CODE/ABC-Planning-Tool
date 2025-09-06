@@ -196,6 +196,9 @@ NextTemplate:
     ' Process completed successfully
     Log logLines, "SUCCESS: Process completed - all workbooks closed properly"
     
+    ' Final cleanup check
+    FinalCleanupCheck logLines
+    
     ' Complete progress bar
     MyProgressbar.Complete
     
@@ -378,52 +381,68 @@ End Sub
 
 Private Sub CloseOpenedWorkbooks(ByVal openedRefs As Collection, ByRef globalOpenedWorkbooks As Collection, ByRef logLines As Collection)
     Dim i As Long
+    Dim failedCloses As Collection
+    Set failedCloses = New Collection
+    
     Log logLines, "DEBUG: Starting to close " & openedRefs.Count & " data files"
+    
     For i = openedRefs.Count To 1 Step -1
         Dim p As String
         p = CStr(openedRefs(i))
-        Log logLines, "DEBUG: Attempting to close data file: " & p
-        Dim wb As Workbook
-        Set wb = GetOpenWorkbookByFullPathWithDebug(p, logLines)
-        Log logLines, "DEBUG: GetOpenWorkbookByFullPath returned: " & IIf(wb Is Nothing, "Nothing", "Workbook object")
-        If Not wb Is Nothing Then
-            Log logLines, "DEBUG: Found open workbook, attempting to close: " & p
-            On Error Resume Next
-            wb.Close SaveChanges:=False
-            If Err.Number = 0 Then
-                ' Verify the workbook is actually closed
-                Dim wbStillOpen As Workbook
-                Set wbStillOpen = GetOpenWorkbookByFullPath(p)
-                If wbStillOpen Is Nothing Then
-                    Log logLines, "Closed: " & p
-                    ' Also remove from global collection since it's now closed
-                    RemoveFromGlobalCollection globalOpenedWorkbooks, p
-                Else
-                    Log logLines, "WARN: Close reported success but workbook still open: " & p
-                    ' Try more aggressive closing
-                    On Error Resume Next
-                    wbStillOpen.Close SaveChanges:=False
-                    If Err.Number = 0 Then
-                        Log logLines, "Retry close successful: " & p
-                        RemoveFromGlobalCollection globalOpenedWorkbooks, p
-                    Else
-                        Log logLines, "Retry close failed: " & p & " | " & Err.Description
-                        Err.Clear
-                    End If
-                    On Error GoTo 0
-                End If
-            Else
-                Log logLines, "ERROR closing: " & p & " | " & Err.Description
-                Err.Clear
-            End If
-            On Error GoTo 0
-        Else
-            Log logLines, "DEBUG: Workbook not found (may already be closed): " & p
+        
+        If Not CloseWorkbookSafely(p, logLines, globalOpenedWorkbooks) Then
+            failedCloses.Add p
         End If
+        
         openedRefs.Remove i
     Next i
+    
+    ' Retry failed closes
+    If failedCloses.Count > 0 Then
+        Log logLines, "DEBUG: Retrying " & failedCloses.Count & " failed closes"
+        For i = failedCloses.Count To 1 Step -1
+            CloseWorkbookSafely CStr(failedCloses(i)), logLines, globalOpenedWorkbooks
+            failedCloses.Remove i
+        Next i
+    End If
+    
     Log logLines, "DEBUG: Finished closing data files"
 End Sub
+
+Private Function CloseWorkbookSafely(ByVal path As String, ByRef logLines As Collection, Optional ByRef globalOpenedWorkbooks As Collection = Nothing) As Boolean
+    Dim wb As Workbook
+    Set wb = GetOpenWorkbookByFullPath(path)
+    
+    If wb Is Nothing Then
+        Log logLines, "DEBUG: Workbook not found (may already be closed): " & path
+        CloseWorkbookSafely = True
+        Exit Function
+    End If
+    
+    Log logLines, "DEBUG: Attempting to close: " & path
+    On Error Resume Next
+    wb.Close SaveChanges:=False
+    If Err.Number = 0 Then
+        ' Verify closure
+        Dim wbStillOpen As Workbook
+        Set wbStillOpen = GetOpenWorkbookByFullPath(path)
+        If wbStillOpen Is Nothing Then
+            Log logLines, "Closed: " & path
+            ' Remove from global collection if provided
+            If Not globalOpenedWorkbooks Is Nothing Then
+                RemoveFromGlobalCollection globalOpenedWorkbooks, path
+            End If
+            CloseWorkbookSafely = True
+        Else
+            Log logLines, "WARN: Close reported success but workbook still open: " & path
+            CloseWorkbookSafely = False
+        End If
+    Else
+        Log logLines, "ERROR closing: " & path & " | " & Err.Description
+        CloseWorkbookSafely = False
+    End If
+    On Error GoTo 0
+End Function
 
 Private Sub CloseAllTrackedWorkbooks(ByVal globalOpenedWorkbooks As Collection, ByRef logLines As Collection)
     ' Close all workbooks that were opened during the process (for error cleanup)
@@ -431,26 +450,13 @@ Private Sub CloseAllTrackedWorkbooks(ByVal globalOpenedWorkbooks As Collection, 
     For i = globalOpenedWorkbooks.Count To 1 Step -1
         Dim p As String
         p = CStr(globalOpenedWorkbooks(i))
-        Dim wb As Workbook
-        Set wb = GetOpenWorkbookByFullPath(p)
-        If Not wb Is Nothing Then
-            On Error Resume Next
-            wb.Close SaveChanges:=False
-            If Err.Number = 0 Then
-                ' Verify the workbook is actually closed
-                Dim wbStillOpen As Workbook
-                Set wbStillOpen = GetOpenWorkbookByFullPath(p)
-                If wbStillOpen Is Nothing Then
-                    Log logLines, "ERROR CLEANUP - Closed: " & p
-                Else
-                    Log logLines, "ERROR CLEANUP - WARN: Close reported success but workbook still open: " & p
-                End If
-            Else
-                Log logLines, "ERROR CLEANUP - Failed to close: " & p & " | " & Err.Description
-                Err.Clear
-            End If
-            On Error GoTo 0
+        
+        If CloseWorkbookSafely(p, logLines, globalOpenedWorkbooks) Then
+            Log logLines, "ERROR CLEANUP - Closed: " & p
+        Else
+            Log logLines, "ERROR CLEANUP - Failed to close: " & p
         End If
+        
         globalOpenedWorkbooks.Remove i
     Next i
 End Sub
@@ -468,44 +474,19 @@ End Sub
 
 Private Function GetOpenWorkbookByFullPath(ByVal targetPath As String) As Workbook
     Dim wb As Workbook
-    Dim localPath As String
-    Dim sharePointPath As String
+    Dim normalizedTarget As String
+    Dim normalizedWorkbook As String
     
-    ' Try direct match first
+    ' Normalize the target path
+    normalizedTarget = NormalizePath(targetPath)
+    
     For Each wb In Application.Workbooks
         On Error Resume Next
         ' Some workbooks may not expose FullName safely; ignore errors
-        If StrComp(wb.FullName, targetPath, vbTextCompare) = 0 Then
+        normalizedWorkbook = NormalizePath(wb.FullName)
+        If StrComp(normalizedWorkbook, normalizedTarget, vbTextCompare) = 0 Then
             Set GetOpenWorkbookByFullPath = wb
             Exit Function
-        End If
-        On Error GoTo 0
-    Next wb
-    
-    ' If no direct match, try to convert local OneDrive path to SharePoint URL
-    If InStr(targetPath, "OneDrive - ABC BILINGUAL SCHOOL") > 0 Then
-        localPath = targetPath
-        sharePointPath = ConvertLocalPathToSharePointURL(localPath)
-        
-        For Each wb In Application.Workbooks
-            On Error Resume Next
-            If StrComp(wb.FullName, sharePointPath, vbTextCompare) = 0 Then
-                Set GetOpenWorkbookByFullPath = wb
-                Exit Function
-            End If
-            On Error GoTo 0
-        Next wb
-    End If
-    
-    ' If still no match, try to convert SharePoint URL to local path
-    For Each wb In Application.Workbooks
-        On Error Resume Next
-        If InStr(wb.FullName, "sharepoint.com") > 0 Then
-            localPath = ConvertSharePointURLToLocalPath(wb.FullName)
-            If StrComp(localPath, targetPath, vbTextCompare) = 0 Then
-                Set GetOpenWorkbookByFullPath = wb
-                Exit Function
-            End If
         End If
         On Error GoTo 0
     Next wb
@@ -513,55 +494,39 @@ Private Function GetOpenWorkbookByFullPath(ByVal targetPath As String) As Workbo
     Set GetOpenWorkbookByFullPath = Nothing
 End Function
 
+Private Function NormalizePath(ByVal path As String) As String
+    ' Convert to lowercase and replace backslashes with forward slashes
+    Dim normalized As String
+    normalized = LCase(Replace(path, "\", "/"))
+    
+    ' Handle OneDrive vs SharePoint path differences
+    If InStr(normalized, "onedrive - abc bilingual school") > 0 Then
+        normalized = Replace(normalized, "onedrive - abc bilingual school", "sharepoint.com/personal/jorge_lopez_abcbilingualschool_edu_sv/documents")
+    End If
+    
+    NormalizePath = normalized
+End Function
+
 Private Function GetOpenWorkbookByFullPathWithDebug(ByVal targetPath As String, ByRef logLines As Collection) As Workbook
     Dim wb As Workbook
-    Dim localPath As String
-    Dim sharePointPath As String
+    Dim normalizedTarget As String
+    Dim normalizedWorkbook As String
     
     Log logLines, "DEBUG: Looking for workbook with path: " & targetPath
     
-    ' Try direct match first
+    ' Normalize the target path
+    normalizedTarget = NormalizePath(targetPath)
+    Log logLines, "DEBUG: Normalized target path: " & normalizedTarget
+    
     For Each wb In Application.Workbooks
         On Error Resume Next
         ' Some workbooks may not expose FullName safely; ignore errors
-        Log logLines, "DEBUG: Checking workbook: " & wb.FullName
-        If StrComp(wb.FullName, targetPath, vbTextCompare) = 0 Then
+        normalizedWorkbook = NormalizePath(wb.FullName)
+        Log logLines, "DEBUG: Checking workbook: " & wb.FullName & " -> normalized: " & normalizedWorkbook
+        If StrComp(normalizedWorkbook, normalizedTarget, vbTextCompare) = 0 Then
             Log logLines, "DEBUG: MATCH FOUND!"
             Set GetOpenWorkbookByFullPathWithDebug = wb
             Exit Function
-        End If
-        On Error GoTo 0
-    Next wb
-    
-    ' If no direct match, try to convert local OneDrive path to SharePoint URL
-    If InStr(targetPath, "OneDrive - ABC BILINGUAL SCHOOL") > 0 Then
-        localPath = targetPath
-        sharePointPath = ConvertLocalPathToSharePointURL(localPath)
-        Log logLines, "DEBUG: Converted to SharePoint URL: " & sharePointPath
-        
-        For Each wb In Application.Workbooks
-            On Error Resume Next
-            Log logLines, "DEBUG: Checking workbook: " & wb.FullName
-            If StrComp(wb.FullName, sharePointPath, vbTextCompare) = 0 Then
-                Log logLines, "DEBUG: MATCH FOUND with converted path!"
-                Set GetOpenWorkbookByFullPathWithDebug = wb
-                Exit Function
-            End If
-            On Error GoTo 0
-        Next wb
-    End If
-    
-    ' If still no match, try to convert SharePoint URL to local path
-    For Each wb In Application.Workbooks
-        On Error Resume Next
-        If InStr(wb.FullName, "sharepoint.com") > 0 Then
-            localPath = ConvertSharePointURLToLocalPath(wb.FullName)
-            Log logLines, "DEBUG: Converted SharePoint URL to local path: " & localPath
-            If StrComp(localPath, targetPath, vbTextCompare) = 0 Then
-                Log logLines, "DEBUG: MATCH FOUND with reverse conversion!"
-                Set GetOpenWorkbookByFullPathWithDebug = wb
-                Exit Function
-            End If
         End If
         On Error GoTo 0
     Next wb
@@ -744,6 +709,29 @@ Private Sub SleepShort(ms As Long)
     Do While Timer - t < ms / 1000!
         DoEvents
     Loop
+End Sub
+
+' ===========================
+' Final Cleanup Check
+' ===========================
+Private Sub FinalCleanupCheck(ByRef logLines As Collection)
+    Dim wb As Workbook
+    Dim openCount As Long
+    openCount = 0
+    
+    For Each wb In Application.Workbooks
+        ' Skip ThisWorkbook (the current workbook)
+        If wb.Name <> ThisWorkbook.Name Then
+            openCount = openCount + 1
+            Log logLines, "WARNING: Workbook still open: " & wb.FullName
+        End If
+    Next wb
+    
+    If openCount > 0 Then
+        Log logLines, "FINAL WARNING: " & openCount & " workbooks remain open after process completion"
+    Else
+        Log logLines, "SUCCESS: All workbooks properly closed"
+    End If
 End Sub
 
 ' ===========================
