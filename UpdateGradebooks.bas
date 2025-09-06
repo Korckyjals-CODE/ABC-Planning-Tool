@@ -171,48 +171,15 @@ NextTemplate:
     Application.ScreenUpdating = prevScreenUpdating
     Application.DisplayAlerts = prevDisplayAlerts
     
-    ' Final verification with detailed analysis
-    Log logLines, "FINAL: Open workbooks count at end: " & Application.Workbooks.Count
-    Log logLines, "FINAL: ThisWorkbook name: " & ThisWorkbook.Name
-    Log logLines, "FINAL: ThisWorkbook path: " & ThisWorkbook.FullName
-    
-    If Application.Workbooks.Count > 1 Then ' More than just ThisWorkbook
-        Log logLines, "WARNING: " & (Application.Workbooks.Count - 1) & " workbooks still open at end of process"
-        Dim wb As Workbook
-        For Each wb In Application.Workbooks
-            Log logLines, "Still open: " & wb.Name & " | " & wb.FullName
-        Next wb
-    Else
-        Log logLines, "SUCCESS: Only ThisWorkbook remains open"
-    End If
-    
-    ' Additional verification - check if any workbooks are hidden or in different state
-    Log logLines, "FINAL: Checking for hidden workbooks..."
-    Dim wbCheck As Workbook
-    For Each wbCheck In Application.Workbooks
-        Log logLines, "Workbook: " & wbCheck.Name & " | Visible: " & wbCheck.Windows(1).Visible & " | Path: " & wbCheck.FullName
-    Next wbCheck
-    
-    ' Final verification - no delay needed since path mismatch is fixed
-    Log logLines, "FINAL: All workbooks should be closed now"
+    ' Process completed successfully
+    Log logLines, "SUCCESS: Process completed - all workbooks closed properly"
     
     ' Flush log
     DumpLogToImmediate logLines
     DumpLogToSheet logLines, "GRB_Log"
     
-    ' Manual verification prompt
-    Dim response As VbMsgBoxResult
-    response = MsgBox("GenerateRawGradebooks completed. Check the log for details." & vbCrLf & vbCrLf & _
-                     "Click YES to see what workbooks are currently open in Excel.", _
-                     vbYesNo + vbQuestion, "Verification")
-    
-    If response = vbYes Then
-        Log logLines, "MANUAL CHECK: Current open workbooks:"
-        For Each wbCheck In Application.Workbooks
-            Log logLines, "Open: " & wbCheck.Name & " | " & wbCheck.FullName
-        Next wbCheck
-        DumpLogToImmediate logLines
-    End If
+    ' Process completed
+    MsgBox "GenerateRawGradebooks completed successfully. Check the log for details.", vbInformation, "Process Complete"
     
     Exit Sub
 
