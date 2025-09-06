@@ -309,6 +309,7 @@ Private Sub OpenMatchingFromSubfolders(ByVal bimesterFolder As String, ByVal gra
                             globalOpenedWorkbooks.Add fullPath  ' Also track globally for error cleanup
                             openedAny = True
                             Log logLines, "Opened: " & fullPath
+                            Log logLines, "DEBUG: Added to openedRefs (count=" & openedRefs.Count & ") and globalOpenedWorkbooks (count=" & globalOpenedWorkbooks.Count & ")"
                         Else
                             Log logLines, "ERROR opening: " & fullPath & " | " & Err.Description
                             Err.Clear
@@ -330,12 +331,15 @@ End Sub
 
 Private Sub CloseOpenedWorkbooks(ByVal openedRefs As Collection, ByRef globalOpenedWorkbooks As Collection, ByRef logLines As Collection)
     Dim i As Long
+    Log logLines, "DEBUG: Starting to close " & openedRefs.Count & " data files"
     For i = openedRefs.Count To 1 Step -1
         Dim p As String
         p = CStr(openedRefs(i))
+        Log logLines, "DEBUG: Attempting to close data file: " & p
         Dim wb As Workbook
         Set wb = GetOpenWorkbookByFullPath(p)
         If Not wb Is Nothing Then
+            Log logLines, "DEBUG: Found open workbook, attempting to close: " & p
             On Error Resume Next
             wb.Close SaveChanges:=False
             If Err.Number = 0 Then
@@ -347,9 +351,12 @@ Private Sub CloseOpenedWorkbooks(ByVal openedRefs As Collection, ByRef globalOpe
                 Err.Clear
             End If
             On Error GoTo 0
+        Else
+            Log logLines, "DEBUG: Workbook not found (may already be closed): " & p
         End If
         openedRefs.Remove i
     Next i
+    Log logLines, "DEBUG: Finished closing data files"
 End Sub
 
 Private Sub CloseAllTrackedWorkbooks(ByVal globalOpenedWorkbooks As Collection, ByRef logLines As Collection)
