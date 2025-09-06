@@ -340,6 +340,12 @@ Private Sub ReplaceFormulasWithValues(ByVal wb As Object, ByRef logLines As Coll
     ' - Last column: last cell in row 3 that has a black background
     ' - Replace only formulas in that area with their current values
     
+    ' Check if workbook object is valid
+    If wb Is Nothing Then
+        Log logLines, "ERROR: ReplaceFormulasWithValues called with Nothing workbook object"
+        Exit Sub
+    End If
+    
     Dim ws As Worksheet
     If wb.Worksheets.Count <> 1 Then
         Log logLines, "WARN: Expected 1 sheet, found " & wb.Worksheets.Count & " in " & wb.Name & ". Using first sheet."
@@ -429,6 +435,13 @@ End Function
 
 Private Sub PlaceFormulaInTemplate(ByVal wb As Object, ByRef logLines As Collection)
     ' Places the grade lookup formula in the template and copies it to the appropriate range
+    
+    ' Check if workbook object is valid
+    If wb Is Nothing Then
+        Log logLines, "ERROR: PlaceFormulaInTemplate called with Nothing workbook object"
+        Exit Sub
+    End If
+    
     Dim ws As Worksheet
     If wb.Worksheets.Count <> 1 Then
         Log logLines, "WARN: Expected 1 sheet, found " & wb.Worksheets.Count & " in " & wb.Name & ". Using first sheet."
