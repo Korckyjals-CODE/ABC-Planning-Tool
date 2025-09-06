@@ -245,6 +245,10 @@ NextTemplate:
     ' Complete progress bar
     MyProgressbar.Complete
     
+    ' Close progress bar after completion
+    MyProgressbar.Terminate
+    Set MyProgressbar = Nothing
+    
     ' Flush log (while performance guards are still active)
     DumpLogToImmediate logLines
     DumpLogToSheet logLines, "GRB_Log"
@@ -269,6 +273,7 @@ ErrHandler:
     ' Close progress bar if it exists
     If Not MyProgressbar Is Nothing Then
         MyProgressbar.Terminate
+        Set MyProgressbar = Nothing
     End If
     
     ' Close all tracked workbooks before restoring settings
