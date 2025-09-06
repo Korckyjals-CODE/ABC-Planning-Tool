@@ -712,16 +712,20 @@ End Sub
 ' Logging
 ' ===========================
 Private Sub Log(ByRef logLines As Collection, ByVal msg As String)
-    logLines.Add Format$(Now, "yyyy-mm-dd hh:nn:ss") & "  " & msg
+    Dim timestampedMsg As String
+    timestampedMsg = Format$(Now, "yyyy-mm-dd hh:nn:ss") & "  " & msg
+    
+    ' Add to collection for worksheet logging
+    logLines.Add timestampedMsg
+    
+    ' Write to Immediate window in real-time for user feedback
+    Debug.Print timestampedMsg
 End Sub
 
 Private Sub DumpLogToImmediate(ByVal logLines As Collection)
-    Dim i As Long
+    ' Since we now write to Immediate window in real-time, just add a separator
     Debug.Print String(60, "-")
-    Debug.Print "GenerateRawGradebooks LOG @ " & Now
-    For i = 1 To logLines.Count
-        Debug.Print logLines(i)
-    Next i
+    Debug.Print "GenerateRawGradebooks LOG COMPLETE @ " & Now
     Debug.Print String(60, "-")
 End Sub
 
