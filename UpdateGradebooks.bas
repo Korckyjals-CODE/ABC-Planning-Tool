@@ -467,36 +467,142 @@ Private Sub RemoveFromGlobalCollection(ByRef globalOpenedWorkbooks As Collection
     Next i
 End Sub
 
-Private Function GetOpenWorkbookByFullPath(ByVal fullPath As String) As Workbook
+Private Function GetOpenWorkbookByFullPath(ByVal targetPath As String) As Workbook
     Dim wb As Workbook
+    Dim localPath As String
+    Dim sharePointPath As String
+    
+    ' Try direct match first
     For Each wb In Application.Workbooks
         On Error Resume Next
         ' Some workbooks may not expose FullName safely; ignore errors
-        If StrComp(wb.FullName, fullPath, vbTextCompare) = 0 Then
+        If StrComp(wb.FullName, targetPath, vbTextCompare) = 0 Then
             Set GetOpenWorkbookByFullPath = wb
             Exit Function
         End If
         On Error GoTo 0
     Next wb
+    
+    ' If no direct match, try to convert local OneDrive path to SharePoint URL
+    If InStr(targetPath, "OneDrive - ABC BILINGUAL SCHOOL") > 0 Then
+        localPath = targetPath
+        sharePointPath = ConvertLocalPathToSharePointURL(localPath)
+        
+        For Each wb In Application.Workbooks
+            On Error Resume Next
+            If StrComp(wb.FullName, sharePointPath, vbTextCompare) = 0 Then
+                Set GetOpenWorkbookByFullPath = wb
+                Exit Function
+            End If
+            On Error GoTo 0
+        Next wb
+    End If
+    
+    ' If still no match, try to convert SharePoint URL to local path
+    For Each wb In Application.Workbooks
+        On Error Resume Next
+        If InStr(wb.FullName, "sharepoint.com") > 0 Then
+            localPath = ConvertSharePointURLToLocalPath(wb.FullName)
+            If StrComp(localPath, targetPath, vbTextCompare) = 0 Then
+                Set GetOpenWorkbookByFullPath = wb
+                Exit Function
+            End If
+        End If
+        On Error GoTo 0
+    Next wb
+    
     Set GetOpenWorkbookByFullPath = Nothing
 End Function
 
-Private Function GetOpenWorkbookByFullPathWithDebug(ByVal fullPath As String, ByRef logLines As Collection) As Workbook
+Private Function GetOpenWorkbookByFullPathWithDebug(ByVal targetPath As String, ByRef logLines As Collection) As Workbook
     Dim wb As Workbook
-    Log logLines, "DEBUG: Looking for workbook with path: " & fullPath
+    Dim localPath As String
+    Dim sharePointPath As String
+    
+    Log logLines, "DEBUG: Looking for workbook with path: " & targetPath
+    
+    ' Try direct match first
     For Each wb In Application.Workbooks
         On Error Resume Next
         ' Some workbooks may not expose FullName safely; ignore errors
         Log logLines, "DEBUG: Checking workbook: " & wb.FullName
-        If StrComp(wb.FullName, fullPath, vbTextCompare) = 0 Then
+        If StrComp(wb.FullName, targetPath, vbTextCompare) = 0 Then
             Log logLines, "DEBUG: MATCH FOUND!"
             Set GetOpenWorkbookByFullPathWithDebug = wb
             Exit Function
         End If
         On Error GoTo 0
     Next wb
-    Log logLines, "DEBUG: No match found for: " & fullPath
+    
+    ' If no direct match, try to convert local OneDrive path to SharePoint URL
+    If InStr(targetPath, "OneDrive - ABC BILINGUAL SCHOOL") > 0 Then
+        localPath = targetPath
+        sharePointPath = ConvertLocalPathToSharePointURL(localPath)
+        Log logLines, "DEBUG: Converted to SharePoint URL: " & sharePointPath
+        
+        For Each wb In Application.Workbooks
+            On Error Resume Next
+            Log logLines, "DEBUG: Checking workbook: " & wb.FullName
+            If StrComp(wb.FullName, sharePointPath, vbTextCompare) = 0 Then
+                Log logLines, "DEBUG: MATCH FOUND with converted path!"
+                Set GetOpenWorkbookByFullPathWithDebug = wb
+                Exit Function
+            End If
+            On Error GoTo 0
+        Next wb
+    End If
+    
+    ' If still no match, try to convert SharePoint URL to local path
+    For Each wb In Application.Workbooks
+        On Error Resume Next
+        If InStr(wb.FullName, "sharepoint.com") > 0 Then
+            localPath = ConvertSharePointURLToLocalPath(wb.FullName)
+            Log logLines, "DEBUG: Converted SharePoint URL to local path: " & localPath
+            If StrComp(localPath, targetPath, vbTextCompare) = 0 Then
+                Log logLines, "DEBUG: MATCH FOUND with reverse conversion!"
+                Set GetOpenWorkbookByFullPathWithDebug = wb
+                Exit Function
+            End If
+        End If
+        On Error GoTo 0
+    Next wb
+    
+    Log logLines, "DEBUG: No match found for: " & targetPath
     Set GetOpenWorkbookByFullPathWithDebug = Nothing
+End Function
+
+' Helper function to convert local OneDrive path to SharePoint URL
+Private Function ConvertLocalPathToSharePointURL(ByVal localPath As String) As String
+    Dim sharePointPath As String
+    Dim relativePath As String
+    
+    ' Extract the relative path after "OneDrive - ABC BILINGUAL SCHOOL"
+    relativePath = Mid(localPath, InStr(localPath, "OneDrive - ABC BILINGUAL SCHOOL") + Len("OneDrive - ABC BILINGUAL SCHOOL") + 1)
+    
+    ' Convert backslashes to forward slashes
+    relativePath = Replace(relativePath, "\", "/")
+    
+    ' Construct SharePoint URL
+    sharePointPath = "https://abcbilingualschool-my.sharepoint.com/personal/jorge_lopez_abcbilingualschool_edu_sv/Documents/" & relativePath
+    
+    ConvertLocalPathToSharePointURL = sharePointPath
+End Function
+
+' Helper function to convert SharePoint URL to local OneDrive path
+Private Function ConvertSharePointURLToLocalPath(ByVal sharePointURL As String) As String
+    Dim localPath As String
+    Dim relativePath As String
+    
+    ' Extract the relative path after "/Documents/"
+    relativePath = Mid(sharePointURL, InStr(sharePointURL, "/Documents/") + Len("/Documents/"))
+    
+    ' Convert forward slashes to backslashes
+    relativePath = Replace(relativePath, "/", "\")
+    
+    ' Construct local OneDrive path
+    localPath = "C:\Users\korck\OneDrive - ABC BILINGUAL SCHOOL\" & relativePath
+    
+    ConvertSharePointURLToLocalPath = localPath
 End Function
 
 Private Function GetBetween(ByVal text As String, ByVal after As String, ByVal before As String) As String
