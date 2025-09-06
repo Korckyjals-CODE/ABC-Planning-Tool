@@ -1,6 +1,9 @@
 Attribute VB_Name = "UpdateGradebooks"
 Option Explicit
 
+' Constants
+Private Const FORMULA_START_CELL As String = "C5"
+
 ' ===========================
 ' GenerateRawGradebooks
 ' ===========================
@@ -12,6 +15,7 @@ Option Explicit
 '    - Parse grade tag ? grade code
 '    - Open matching grade workbook(s) from each subfolder (so formulas can link to open files)
 '    - Open template (use open instance if already open)
+'    - Place grade lookup formula in C5 and copy to rectangular range (C5 : lastRow, lastCol)
 '    - Convert formulas to values in rectangular range (C5 : lastRow, lastCol) per rules
 '    - Save & close template
 '    - Close only the subfolder files we opened for this template
@@ -56,6 +60,10 @@ Public Sub GenerateRawGradebooks(ByVal strBimester As String)
     ' Global tracking for all opened workbooks (for error cleanup)
     Dim globalOpenedWorkbooks As Collection
     Set globalOpenedWorkbooks = New Collection
+    
+    ' Track formula placement errors
+    Dim formulaErrors As Long
+    formulaErrors = 0
     
     On Error GoTo ErrHandler
     
@@ -191,6 +199,18 @@ Public Sub GenerateRawGradebooks(ByVal strBimester As String)
             Log logLines, "ERROR: Cannot open template - Excel instance not available"
         End If
         
+        ' 4.4.1) Place formula in template if successfully opened
+        If Not wbTemplate Is Nothing Then
+            On Error Resume Next
+            PlaceFormulaInTemplate wbTemplate, logLines
+            If Err.Number <> 0 Then
+                formulaErrors = formulaErrors + 1
+                Log logLines, "ERROR placing formula in template: " & templatePath & " | " & Err.Description
+                Err.Clear
+            End If
+            On Error GoTo ErrHandler
+        End If
+        
         ' 4.5) Replace formulas by values in the single sheet's rectangular range
         On Error Resume Next
         ReplaceFormulasWithValues wbTemplate, logLines
@@ -262,7 +282,14 @@ NextTemplate:
     Application.DisplayAlerts = prevDisplayAlerts
     
     ' Process completed
-    MsgBox "GenerateRawGradebooks completed successfully. Check the log for details.", vbInformation, "Process Complete"
+    Dim finalMessage As String
+    finalMessage = "GenerateRawGradebooks completed successfully."
+    If formulaErrors > 0 Then
+        finalMessage = finalMessage & " However, " & formulaErrors & " formula placement error(s) occurred. Check the log for details."
+    Else
+        finalMessage = finalMessage & " Check the log for details."
+    End If
+    MsgBox finalMessage, vbInformation, "Process Complete"
     
     Exit Sub
 
@@ -377,6 +404,206 @@ Private Function GetLastBlackBackgroundColInRow(ByVal ws As Worksheet, ByVal row
     Next c
     GetLastBlackBackgroundColInRow = 0
 End Function
+
+Private Function GetLastWeekColumnInRow(ByVal ws As Worksheet, ByVal rowNum As Long) As Long
+    Dim lastUsedCol As Long, c As Long
+    lastUsedCol = ws.Cells(rowNum, ws.Columns.Count).End(xlToLeft).Column
+    For c = lastUsedCol To 1 Step -1
+        Dim cellValue As String
+        cellValue = CStr(ws.Cells(rowNum, c).Value)
+        If Left(Trim(cellValue), 4) = "Week" Then
+            GetLastWeekColumnInRow = c
+            Exit Function
+        End If
+    Next c
+    GetLastWeekColumnInRow = 0
+End Function
+
+Private Sub PlaceFormulaInTemplate(ByVal wb As Object, ByRef logLines As Collection)
+    ' Places the grade lookup formula in the template and copies it to the appropriate range
+    Dim ws As Worksheet
+    If wb.Worksheets.Count <> 1 Then
+        Log logLines, "WARN: Expected 1 sheet, found " & wb.Worksheets.Count & " in " & wb.Name & ". Using first sheet."
+    End If
+    Set ws = wb.Worksheets(1)
+    
+    ' Get the range dimensions
+    Dim lastRow As Long, lastCol As Long
+    lastRow = GetLastNonEmptyRowInColumn(ws, 2)   ' column B = 2
+    If lastRow < 5 Then
+        Log logLines, "INFO: No data rows detected (lastRow < 5). Skipping formula placement: " & wb.Name
+        Exit Sub
+    End If
+    
+    lastCol = GetLastWeekColumnInRow(ws, 3)  ' row 3 = 3
+    If lastCol < 3 Then
+        Log logLines, "INFO: No Week columns found in row 3. Skipping formula placement: " & wb.Name
+        Exit Sub
+    End If
+    
+    ' Define the formula
+    Dim formula As String
+    formula = "=LET(" & _
+        "name," & _
+        "$B5," & _
+        "week_label," & _
+        "C$3," & _
+        "name_to_grade_level," & _
+        "LAMBDA(" & _
+        "grade_string," & _
+        "SWITCH(" & _
+        "grade_string," & _
+        """First Grade_A""," & _
+        """1A""," & _
+        """First Grade_B""," & _
+        """1B""," & _
+        """Second Grade_A""," & _
+        """2A""," & _
+        """Second Grade_B""," & _
+        """2B""," & _
+        """Third Grade_A""," & _
+        """3A""," & _
+        """Third Grade_B""," & _
+        """3B""," & _
+        """Fourth Grade_A""," & _
+        """4A""," & _
+        """Fourth Grade_B""," & _
+        """4B""," & _
+        """Fifth Grade_A""," & _
+        """5A""," & _
+        """Fifth Grade_B""," & _
+        """5B""," & _
+        """Sixth Grade_A""," & _
+        """6A""," & _
+        """Sixth Grade_B""," & _
+        """6B""," & _
+        """Seventh Grade_A""," & _
+        """7A""," & _
+        """Eighth Grade_A""," & _
+        """8A""," & _
+        """Ninth Grade_A""," & _
+        """9A""," & _
+        """Tenth Grade_A""," & _
+        """10A""," & _
+        """Eleventh Grade_A""," & _
+        """11A""," & _
+        """Twelfth Grade_A""," & _
+        """12A""," & _
+        """Ciclo Tres Development Center_A""," & _
+        """DC3A""," & _
+        """Ciclo Tres Development Center_B""," & _
+        """DC3B"" " & _
+        ") " & _
+        ")," & _
+        "grade_level_phrase," & _
+        "TEXTBEFORE(" & _
+        "TEXTAFTER(" & _
+        "CELL(" & _
+        """filename""" & _
+        ")," & _
+        """Grades-""" & _
+        ")," & _
+        """-Computers""" & _
+        ")," & _
+        "grade_level," & _
+        "name_to_grade_level(" & _
+        "grade_level_phrase" & _
+        ")," & _
+        "week_number," & _
+        "TEXTAFTER(" & _
+        "week_label," & _
+        """ """ & _
+        ")," & _
+        "fixed_week_number," & _
+        "IF(" & _
+        "LEN(" & _
+        "week_number" & _
+        ") = 2," & _
+        """""," & _
+        """0""" & _
+        ") & week_number," & _
+        "parsed_name," & _
+        "TEXTAFTER(" & _
+        "name," & _
+        """- """ & _
+        ")," & _
+        "clean_name," & _
+        "TRIM(" & _
+        "SUBSTITUTE(" & _
+        "parsed_name," & _
+        """ ,""," & _
+        """,""" & _
+        ")" & _
+        ")," & _
+        "source_ws_xlsx," & _
+        """'[Weekly Grade - W"" & fixed_week_number & "" - "" & grade_level & "" - 2526.xlsx]Nota Semanal'""," & _
+        "source_ws_xlsm," & _
+        """'[Weekly Grade - W"" & fixed_week_number & "" - "" & grade_level & "" - 2526.xlsm]Nota Semanal'""," & _
+        "name_rng_xlsx," & _
+        "INDIRECT(" & _
+        "source_ws_xlsx & ""!$A:$A""" & _
+        ")," & _
+        "grade_rng_xlsx," & _
+        "INDIRECT(" & _
+        "source_ws_xlsx & ""!$H:$H""" & _
+        ")," & _
+        "name_rng_xlsm," & _
+        "INDIRECT(" & _
+        "source_ws_xlsm & ""!$A:$A""" & _
+        ")," & _
+        "grade_rng_xlsm," & _
+        "INDIRECT(" & _
+        "source_ws_xlsm & ""!$H:$H""" & _
+        ")," & _
+        "grade," & _
+        "IFERROR(" & _
+        "XLOOKUP(" & _
+        "clean_name," & _
+        "name_rng_xlsx," & _
+        "grade_rng_xlsx," & _
+        """""" & _
+        ")," & _
+        "XLOOKUP(" & _
+        "clean_name," & _
+        "name_rng_xlsm," & _
+        "grade_rng_xlsm," & _
+        """""" & _
+        ")" & _
+        ")," & _
+        "IFERROR(" & _
+        "grade," & _
+        """""" & _
+        ")" & _
+        ")"
+    
+    ' Place formula in C5
+    On Error Resume Next
+    ws.Range(FORMULA_START_CELL).Formula = formula
+    If Err.Number <> 0 Then
+        Log logLines, "ERROR placing formula in " & wb.Name & ": " & Err.Description
+        Err.Clear
+        Exit Sub
+    End If
+    On Error GoTo 0
+    
+    ' Copy formula to the rectangular range
+    Dim rng As Range
+    Set rng = ws.Range(ws.Cells(5, 3), ws.Cells(lastRow, lastCol)) ' C5 : lastRow,lastCol
+    
+    On Error Resume Next
+    ws.Range(FORMULA_START_CELL).Copy
+    rng.PasteSpecial xlPasteFormulas
+    If Err.Number <> 0 Then
+        Log logLines, "ERROR copying formula to range in " & wb.Name & ": " & Err.Description
+        Err.Clear
+    Else
+        Log logLines, "Formula placed on range " & rng.Address(External:=False) & " in " & wb.Name
+    End If
+    On Error GoTo 0
+    
+    ' Clear clipboard
+    Application.CutCopyMode = False
+End Sub
 
 Private Sub OpenMatchingFromSubfolders(ByVal xlApp As Object, ByVal xlAppCreated As Boolean, ByVal bimesterFolder As String, ByVal gradeCode As String, _
                                        ByRef openedRefs As Collection, ByRef globalOpenedWorkbooks As Collection, ByRef logLines As Collection)
