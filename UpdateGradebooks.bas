@@ -212,23 +212,31 @@ Public Sub GenerateRawGradebooks(ByVal strBimester As String)
         End If
         
         ' 4.5) Replace formulas by values in the single sheet's rectangular range
-        On Error Resume Next
-        ReplaceFormulasWithValues wbTemplate, logLines
-        If Err.Number <> 0 Then
-            Log logLines, "ERROR replacing formulas: " & templatePath & " | " & Err.Description
-            Err.Clear
+        If Not wbTemplate Is Nothing Then
+            On Error Resume Next
+            ReplaceFormulasWithValues wbTemplate, logLines
+            If Err.Number <> 0 Then
+                Log logLines, "ERROR replacing formulas: " & templatePath & " | " & Err.Description
+                Err.Clear
+            End If
+            On Error GoTo ErrHandler
+        Else
+            Log logLines, "SKIP replacing formulas - template workbook not available: " & templatePath
         End If
-        On Error GoTo ErrHandler
         
         ' 4.6) Save & close template
         ' Try to save/close template, but ensure we still close the support files
         Log logLines, "DEBUG: Before template close - Open workbooks count: " & Application.Workbooks.Count
-        On Error GoTo TemplateCloseErr
-        SafeSaveAndClose wbTemplate, logLines, templatePath
-        ' Remove template from global collection since it's now closed
-        RemoveFromGlobalCollection globalOpenedWorkbooks, fullTemplatePath
-        Log logLines, "DEBUG: After template close - Open workbooks count: " & Application.Workbooks.Count
-        On Error GoTo ErrHandler
+        If Not wbTemplate Is Nothing Then
+            On Error GoTo TemplateCloseErr
+            SafeSaveAndClose wbTemplate, logLines, templatePath
+            ' Remove template from global collection since it's now closed
+            RemoveFromGlobalCollection globalOpenedWorkbooks, fullTemplatePath
+            Log logLines, "DEBUG: After template close - Open workbooks count: " & Application.Workbooks.Count
+            On Error GoTo ErrHandler
+        Else
+            Log logLines, "SKIP save/close - template workbook not available: " & templatePath
+        End If
         
         GoTo AfterTemplate
         
