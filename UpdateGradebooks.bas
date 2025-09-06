@@ -140,10 +140,12 @@ Public Sub GenerateRawGradebooks(ByVal strBimester As String)
         
         ' 4.6) Save & close template
         ' Try to save/close template, but ensure we still close the support files
+        Log logLines, "DEBUG: Before template close - Open workbooks count: " & Application.Workbooks.Count
         On Error GoTo TemplateCloseErr
         SafeSaveAndClose wbTemplate, logLines, templatePath
         ' Remove template from global collection since it's now closed
         RemoveFromGlobalCollection globalOpenedWorkbooks, fullTemplatePath
+        Log logLines, "DEBUG: After template close - Open workbooks count: " & Application.Workbooks.Count
         On Error GoTo ErrHandler
         
         GoTo AfterTemplate
@@ -538,6 +540,7 @@ Private Sub SafeSaveAndClose(ByVal wb As Workbook, ByRef logLines As Collection,
             DoEvents
             SleepShort 300
         Else
+            Log logLines, "DEBUG: Successfully saved: " & IIf(Len(labelName) > 0, labelName, wb.Name)
             Exit For
         End If
     Next i
@@ -552,6 +555,7 @@ Private Sub SafeSaveAndClose(ByVal wb As Workbook, ByRef logLines As Collection,
             DoEvents
             SleepShort 300
         Else
+            Log logLines, "DEBUG: Successfully closed: " & IIf(Len(labelName) > 0, labelName, wb.Name)
             Exit For
         End If
     Next i
