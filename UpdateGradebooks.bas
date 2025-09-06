@@ -49,6 +49,10 @@ Public Sub GenerateRawGradebooks(ByVal strBimester As String)
     Dim logLines As Collection
     Set logLines = New Collection
     
+    ' Global tracking for all opened workbooks (for error cleanup)
+    Dim globalOpenedWorkbooks As Collection
+    Set globalOpenedWorkbooks = New Collection
+    
     On Error GoTo ErrHandler
     
     booEnablePerformanceGuards = True
@@ -111,13 +115,18 @@ Public Sub GenerateRawGradebooks(ByVal strBimester As String)
         ' 4.3) Open the matching grade workbook(s) from each immediate subfolder
         Dim openedRefs As Collection
         Set openedRefs = New Collection  ' Collection of paths we opened (to close later)
-        OpenMatchingFromSubfolders strBimesterFolderURL, strGradeLevel, openedRefs, logLines
+        OpenMatchingFromSubfolders strBimesterFolderURL, strGradeLevel, openedRefs, globalOpenedWorkbooks, logLines
         
         ' 4.4) Open the template workbook (or use the already-open instance)
         Dim wbTemplate As Workbook
         Set wbTemplate = GetOpenWorkbookByFullPath(fullTemplatePath)
         If wbTemplate Is Nothing Then
             Set wbTemplate = Workbooks.Open(fullTemplatePath)
+            ' Track template workbook globally for error cleanup
+            globalOpenedWorkbooks.Add fullTemplatePath
+            Log logLines, "Opened template: " & fullTemplatePath
+        Else
+            Log logLines, "Template already open (left as-is): " & fullTemplatePath
         End If
         
         ' 4.5) Replace formulas by values in the single sheet's rectangular range
@@ -133,6 +142,8 @@ Public Sub GenerateRawGradebooks(ByVal strBimester As String)
         ' Try to save/close template, but ensure we still close the support files
         On Error GoTo TemplateCloseErr
         SafeSaveAndClose wbTemplate, logLines, templatePath
+        ' Remove template from global collection since it's now closed
+        RemoveFromGlobalCollection globalOpenedWorkbooks, fullTemplatePath
         On Error GoTo ErrHandler
         
         GoTo AfterTemplate
@@ -144,7 +155,7 @@ TemplateCloseErr:
         
 AfterTemplate:
         ' 4.7) Close only the subfolder files that were opened in step 4.3
-        CloseOpenedWorkbooks openedRefs, logLines
+        CloseOpenedWorkbooks openedRefs, globalOpenedWorkbooks, logLines
         
 NextTemplate:
         templatePath = Dir() ' next .xlsx
@@ -168,6 +179,10 @@ NextTemplate:
 ErrHandler:
     ' Best-effort restore
     On Error Resume Next
+    
+    ' Close all tracked workbooks before restoring settings
+    CloseAllTrackedWorkbooks globalOpenedWorkbooks, logLines
+    
     Application.Calculation = prevCalc
     If prevCalc <> xlCalculationManual Then Application.Calculate
     Application.ScreenUpdating = prevScreenUpdating
@@ -266,7 +281,7 @@ Private Function GetLastBlackBackgroundColInRow(ByVal ws As Worksheet, ByVal row
 End Function
 
 Private Sub OpenMatchingFromSubfolders(ByVal bimesterFolder As String, ByVal gradeCode As String, _
-                                       ByRef openedRefs As Collection, ByRef logLines As Collection)
+                                       ByRef openedRefs As Collection, ByRef globalOpenedWorkbooks As Collection, ByRef logLines As Collection)
     Dim fso As Object, folder As Object, subf As Object, fil As Object
     Set fso = CreateObject("Scripting.FileSystemObject")
     Set folder = fso.GetFolder(bimesterFolder)
@@ -291,6 +306,7 @@ Private Sub OpenMatchingFromSubfolders(ByVal bimesterFolder As String, ByVal gra
                         Set wb = Workbooks.Open(fullPath)
                         If Err.Number = 0 Then
                             openedRefs.Add fullPath
+                            globalOpenedWorkbooks.Add fullPath  ' Also track globally for error cleanup
                             openedAny = True
                             Log logLines, "Opened: " & fullPath
                         Else
@@ -312,7 +328,7 @@ Private Sub OpenMatchingFromSubfolders(ByVal bimesterFolder As String, ByVal gra
     Next subf
 End Sub
 
-Private Sub CloseOpenedWorkbooks(ByVal openedRefs As Collection, ByRef logLines As Collection)
+Private Sub CloseOpenedWorkbooks(ByVal openedRefs As Collection, ByRef globalOpenedWorkbooks As Collection, ByRef logLines As Collection)
     Dim i As Long
     For i = openedRefs.Count To 1 Step -1
         Dim p As String
@@ -324,6 +340,8 @@ Private Sub CloseOpenedWorkbooks(ByVal openedRefs As Collection, ByRef logLines 
             wb.Close SaveChanges:=False
             If Err.Number = 0 Then
                 Log logLines, "Closed: " & p
+                ' Also remove from global collection since it's now closed
+                RemoveFromGlobalCollection globalOpenedWorkbooks, p
             Else
                 Log logLines, "ERROR closing: " & p & " | " & Err.Description
                 Err.Clear
@@ -331,6 +349,40 @@ Private Sub CloseOpenedWorkbooks(ByVal openedRefs As Collection, ByRef logLines 
             On Error GoTo 0
         End If
         openedRefs.Remove i
+    Next i
+End Sub
+
+Private Sub CloseAllTrackedWorkbooks(ByVal globalOpenedWorkbooks As Collection, ByRef logLines As Collection)
+    ' Close all workbooks that were opened during the process (for error cleanup)
+    Dim i As Long
+    For i = globalOpenedWorkbooks.Count To 1 Step -1
+        Dim p As String
+        p = CStr(globalOpenedWorkbooks(i))
+        Dim wb As Workbook
+        Set wb = GetOpenWorkbookByFullPath(p)
+        If Not wb Is Nothing Then
+            On Error Resume Next
+            wb.Close SaveChanges:=False
+            If Err.Number = 0 Then
+                Log logLines, "ERROR CLEANUP - Closed: " & p
+            Else
+                Log logLines, "ERROR CLEANUP - Failed to close: " & p & " | " & Err.Description
+                Err.Clear
+            End If
+            On Error GoTo 0
+        End If
+        globalOpenedWorkbooks.Remove i
+    Next i
+End Sub
+
+Private Sub RemoveFromGlobalCollection(ByRef globalOpenedWorkbooks As Collection, ByVal pathToRemove As String)
+    ' Remove a specific path from the global collection
+    Dim i As Long
+    For i = globalOpenedWorkbooks.Count To 1 Step -1
+        If StrComp(CStr(globalOpenedWorkbooks(i)), pathToRemove, vbTextCompare) = 0 Then
+            globalOpenedWorkbooks.Remove i
+            Exit For
+        End If
     Next i
 End Sub
 
