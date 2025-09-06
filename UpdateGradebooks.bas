@@ -163,20 +163,20 @@ NextTemplate:
         templatePath = Dir() ' next .xlsx
     Loop
     
-    ' Wrap-up
+    ' Process completed successfully
+    Log logLines, "SUCCESS: Process completed - all workbooks closed properly"
+    
+    ' Flush log (while performance guards are still active)
+    DumpLogToImmediate logLines
+    DumpLogToSheet logLines, "GRB_Log"
+    
+    ' Wrap-up - restore performance guards AFTER logging
     Application.Calculation = prevCalc
     Application.EnableEvents = prevEvents
     If prevCalc <> xlCalculationManual Then Application.Calculate
     
     Application.ScreenUpdating = prevScreenUpdating
     Application.DisplayAlerts = prevDisplayAlerts
-    
-    ' Process completed successfully
-    Log logLines, "SUCCESS: Process completed - all workbooks closed properly"
-    
-    ' Flush log
-    DumpLogToImmediate logLines
-    DumpLogToSheet logLines, "GRB_Log"
     
     ' Process completed
     MsgBox "GenerateRawGradebooks completed successfully. Check the log for details.", vbInformation, "Process Complete"
@@ -190,15 +190,17 @@ ErrHandler:
     ' Close all tracked workbooks before restoring settings
     CloseAllTrackedWorkbooks globalOpenedWorkbooks, logLines
     
+    Log logLines, "FATAL: " & Err.Number & " - " & Err.Description
+    DumpLogToImmediate logLines
+    DumpLogToSheet logLines, "GRB_Log"
+    
+    ' Restore performance guards AFTER logging
     Application.Calculation = prevCalc
     If prevCalc <> xlCalculationManual Then Application.Calculate
     Application.ScreenUpdating = prevScreenUpdating
     Application.DisplayAlerts = prevDisplayAlerts
     Application.EnableEvents = prevEvents
     
-    Log logLines, "FATAL: " & Err.Number & " - " & Err.Description
-    DumpLogToImmediate logLines
-    DumpLogToSheet logLines, "GRB_Log"
     MsgBox "GenerateRawGradebooks encountered an error: " & Err.Description, vbExclamation
 End Sub
 
