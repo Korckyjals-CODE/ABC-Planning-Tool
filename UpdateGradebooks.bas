@@ -85,10 +85,37 @@ Public Sub GenerateRawGradebooks(ByVal strBimester As String)
     EnsureFolderExists fso, strBimesterFolderURL
     Log logLines, "Bimester folder: " & strBimesterFolderURL
     
-    ' 4) For each .xlsx template in bimester folder
+    ' 4) Count total .xlsx templates for progress tracking
+    Dim templateCount As Long
+    templateCount = 0
     Dim templatePath As String
     templatePath = Dir(strBimesterFolderURL & "\*.xlsx")
     
+    ' First pass: count templates
+    Do While Len(templatePath) > 0
+        templateCount = templateCount + 1
+        templatePath = Dir()
+    Loop
+    
+    ' Reset for actual processing
+    templatePath = Dir(strBimesterFolderURL & "\*.xlsx")
+    
+    ' Initialize ProgressBar
+    Dim MyProgressbar As ProgressBar
+    Set MyProgressbar = New ProgressBar
+    
+    With MyProgressbar
+        .Title = "Generating Raw Gradebooks - " & strBimester
+        .ExcelStatusBar = True
+        .StartColour = rgbMediumSeaGreen
+        .EndColour = rgbGreen
+        .TotalActions = templateCount
+    End With
+    
+    MyProgressbar.ShowBar
+    Log logLines, "Starting processing of " & templateCount & " templates"
+    
+    ' Second pass: process templates
     Do While Len(templatePath) > 0
         Dim fullTemplatePath As String
         fullTemplatePath = strBimesterFolderURL & "\" & templatePath
@@ -111,6 +138,9 @@ Public Sub GenerateRawGradebooks(ByVal strBimester As String)
         End If
         
         Log logLines, "Processing template: " & templatePath & " | Tag='" & strGradeLevelTag & "' ? Code='" & strGradeLevel & "'"
+        
+        ' Update progress bar
+        MyProgressbar.NextAction "Processing '" & templatePath & "'", True
         
         ' 4.3) Open the matching grade workbook(s) from each immediate subfolder
         Dim openedRefs As Collection
@@ -166,6 +196,9 @@ NextTemplate:
     ' Process completed successfully
     Log logLines, "SUCCESS: Process completed - all workbooks closed properly"
     
+    ' Complete progress bar
+    MyProgressbar.Complete
+    
     ' Flush log (while performance guards are still active)
     DumpLogToImmediate logLines
     DumpLogToSheet logLines, "GRB_Log"
@@ -186,6 +219,11 @@ NextTemplate:
 ErrHandler:
     ' Best-effort restore
     On Error Resume Next
+    
+    ' Close progress bar if it exists
+    If Not MyProgressbar Is Nothing Then
+        MyProgressbar.Terminate
+    End If
     
     ' Close all tracked workbooks before restoring settings
     CloseAllTrackedWorkbooks globalOpenedWorkbooks, logLines
