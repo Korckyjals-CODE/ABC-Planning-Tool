@@ -441,140 +441,46 @@ Private Sub PlaceFormulaInTemplate(ByVal wb As Object, ByRef logLines As Collect
         Exit Sub
     End If
     
-    ' Define the formula
+    ' Define the formula by building it in parts to avoid line continuation limit
     Dim formula As String
-    formula = "=LET(" & _
-        "name," & _
-        "$B5," & _
-        "week_label," & _
-        "C$3," & _
-        "name_to_grade_level," & _
-        "LAMBDA(" & _
-        "grade_string," & _
-        "SWITCH(" & _
-        "grade_string," & _
-        """First Grade_A""," & _
-        """1A""," & _
-        """First Grade_B""," & _
-        """1B""," & _
-        """Second Grade_A""," & _
-        """2A""," & _
-        """Second Grade_B""," & _
-        """2B""," & _
-        """Third Grade_A""," & _
-        """3A""," & _
-        """Third Grade_B""," & _
-        """3B""," & _
-        """Fourth Grade_A""," & _
-        """4A""," & _
-        """Fourth Grade_B""," & _
-        """4B""," & _
-        """Fifth Grade_A""," & _
-        """5A""," & _
-        """Fifth Grade_B""," & _
-        """5B""," & _
-        """Sixth Grade_A""," & _
-        """6A""," & _
-        """Sixth Grade_B""," & _
-        """6B""," & _
-        """Seventh Grade_A""," & _
-        """7A""," & _
-        """Eighth Grade_A""," & _
-        """8A""," & _
-        """Ninth Grade_A""," & _
-        """9A""," & _
-        """Tenth Grade_A""," & _
-        """10A""," & _
-        """Eleventh Grade_A""," & _
-        """11A""," & _
-        """Twelfth Grade_A""," & _
-        """12A""," & _
-        """Ciclo Tres Development Center_A""," & _
-        """DC3A""," & _
-        """Ciclo Tres Development Center_B""," & _
-        """DC3B"" " & _
-        ") " & _
-        ")," & _
-        "grade_level_phrase," & _
-        "TEXTBEFORE(" & _
-        "TEXTAFTER(" & _
-        "CELL(" & _
-        """filename""" & _
-        ")," & _
-        """Grades-""" & _
-        ")," & _
-        """-Computers""" & _
-        ")," & _
-        "grade_level," & _
-        "name_to_grade_level(" & _
-        "grade_level_phrase" & _
-        ")," & _
-        "week_number," & _
-        "TEXTAFTER(" & _
-        "week_label," & _
-        """ """ & _
-        ")," & _
-        "fixed_week_number," & _
-        "IF(" & _
-        "LEN(" & _
-        "week_number" & _
-        ") = 2," & _
-        """""," & _
-        """0""" & _
-        ") & week_number," & _
-        "parsed_name," & _
-        "TEXTAFTER(" & _
-        "name," & _
-        """- """ & _
-        ")," & _
-        "clean_name," & _
-        "TRIM(" & _
-        "SUBSTITUTE(" & _
-        "parsed_name," & _
-        """ ,""," & _
-        """,""" & _
-        ")" & _
-        ")," & _
-        "source_ws_xlsx," & _
-        """'[Weekly Grade - W"" & fixed_week_number & "" - "" & grade_level & "" - 2526.xlsx]Nota Semanal'""," & _
-        "source_ws_xlsm," & _
-        """'[Weekly Grade - W"" & fixed_week_number & "" - "" & grade_level & "" - 2526.xlsm]Nota Semanal'""," & _
-        "name_rng_xlsx," & _
-        "INDIRECT(" & _
-        "source_ws_xlsx & ""!$A:$A""" & _
-        ")," & _
-        "grade_rng_xlsx," & _
-        "INDIRECT(" & _
-        "source_ws_xlsx & ""!$H:$H""" & _
-        ")," & _
-        "name_rng_xlsm," & _
-        "INDIRECT(" & _
-        "source_ws_xlsm & ""!$A:$A""" & _
-        ")," & _
-        "grade_rng_xlsm," & _
-        "INDIRECT(" & _
-        "source_ws_xlsm & ""!$H:$H""" & _
-        ")," & _
-        "grade," & _
-        "IFERROR(" & _
-        "XLOOKUP(" & _
-        "clean_name," & _
-        "name_rng_xlsx," & _
-        "grade_rng_xlsx," & _
-        """""" & _
-        ")," & _
-        "XLOOKUP(" & _
-        "clean_name," & _
-        "name_rng_xlsm," & _
-        "grade_rng_xlsm," & _
-        """""" & _
-        ")" & _
-        ")," & _
-        "IFERROR(" & _
-        "grade," & _
-        """""" & _
-        ")" & _
-        ")"
+    formula = "=LET("
+    formula = formula & "name,$B5,"
+    formula = formula & "week_label,C$3,"
+    formula = formula & "name_to_grade_level,LAMBDA(grade_string,SWITCH(grade_string,"
+    formula = formula & """First Grade_A"",""1A"","
+    formula = formula & """First Grade_B"",""1B"","
+    formula = formula & """Second Grade_A"",""2A"","
+    formula = formula & """Second Grade_B"",""2B"","
+    formula = formula & """Third Grade_A"",""3A"","
+    formula = formula & """Third Grade_B"",""3B"","
+    formula = formula & """Fourth Grade_A"",""4A"","
+    formula = formula & """Fourth Grade_B"",""4B"","
+    formula = formula & """Fifth Grade_A"",""5A"","
+    formula = formula & """Fifth Grade_B"",""5B"","
+    formula = formula & """Sixth Grade_A"",""6A"","
+    formula = formula & """Sixth Grade_B"",""6B"","
+    formula = formula & """Seventh Grade_A"",""7A"","
+    formula = formula & """Eighth Grade_A"",""8A"","
+    formula = formula & """Ninth Grade_A"",""9A"","
+    formula = formula & """Tenth Grade_A"",""10A"","
+    formula = formula & """Eleventh Grade_A"",""11A"","
+    formula = formula & """Twelfth Grade_A"",""12A"","
+    formula = formula & """Ciclo Tres Development Center_A"",""DC3A"","
+    formula = formula & """Ciclo Tres Development Center_B"",""DC3B"")),"
+    formula = formula & "grade_level_phrase,TEXTBEFORE(TEXTAFTER(CELL(""filename""),""Grades-""),""-Computers""),"
+    formula = formula & "grade_level,name_to_grade_level(grade_level_phrase),"
+    formula = formula & "week_number,TEXTAFTER(week_label,"" ""),"
+    formula = formula & "fixed_week_number,IF(LEN(week_number)=2,"""",""0"")&week_number,"
+    formula = formula & "parsed_name,TEXTAFTER(name,""- ""),"
+    formula = formula & "clean_name,TRIM(SUBSTITUTE(parsed_name,"" ,"","","")),"
+    formula = formula & "source_ws_xlsx,""'[Weekly Grade - W""&fixed_week_number&"" - ""&grade_level&"" - 2526.xlsx]Nota Semanal'"","
+    formula = formula & "source_ws_xlsm,""'[Weekly Grade - W""&fixed_week_number&"" - ""&grade_level&"" - 2526.xlsm]Nota Semanal'"","
+    formula = formula & "name_rng_xlsx,INDIRECT(source_ws_xlsx&""!$A:$A""),"
+    formula = formula & "grade_rng_xlsx,INDIRECT(source_ws_xlsx&""!$H:$H""),"
+    formula = formula & "name_rng_xlsm,INDIRECT(source_ws_xlsm&""!$A:$A""),"
+    formula = formula & "grade_rng_xlsm,INDIRECT(source_ws_xlsm&""!$H:$H""),"
+    formula = formula & "grade,IFERROR(XLOOKUP(clean_name,name_rng_xlsx,grade_rng_xlsx,""""),XLOOKUP(clean_name,name_rng_xlsm,grade_rng_xlsm,"""")),"
+    formula = formula & "IFERROR(grade,""""))"
     
     ' Place formula in C5
     On Error Resume Next
