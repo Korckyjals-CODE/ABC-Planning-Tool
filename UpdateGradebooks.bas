@@ -337,7 +337,8 @@ Private Sub CloseOpenedWorkbooks(ByVal openedRefs As Collection, ByRef globalOpe
         p = CStr(openedRefs(i))
         Log logLines, "DEBUG: Attempting to close data file: " & p
         Dim wb As Workbook
-        Set wb = GetOpenWorkbookByFullPath(p)
+        Set wb = GetOpenWorkbookByFullPathWithDebug(p, logLines)
+        Log logLines, "DEBUG: GetOpenWorkbookByFullPath returned: " & IIf(wb Is Nothing, "Nothing", "Workbook object")
         If Not wb Is Nothing Then
             Log logLines, "DEBUG: Found open workbook, attempting to close: " & p
             On Error Resume Next
@@ -405,6 +406,24 @@ Private Function GetOpenWorkbookByFullPath(ByVal fullPath As String) As Workbook
         On Error GoTo 0
     Next wb
     Set GetOpenWorkbookByFullPath = Nothing
+End Function
+
+Private Function GetOpenWorkbookByFullPathWithDebug(ByVal fullPath As String, ByRef logLines As Collection) As Workbook
+    Dim wb As Workbook
+    Log logLines, "DEBUG: Looking for workbook with path: " & fullPath
+    For Each wb In Application.Workbooks
+        On Error Resume Next
+        ' Some workbooks may not expose FullName safely; ignore errors
+        Log logLines, "DEBUG: Checking workbook: " & wb.FullName
+        If StrComp(wb.FullName, fullPath, vbTextCompare) = 0 Then
+            Log logLines, "DEBUG: MATCH FOUND!"
+            Set GetOpenWorkbookByFullPathWithDebug = wb
+            Exit Function
+        End If
+        On Error GoTo 0
+    Next wb
+    Log logLines, "DEBUG: No match found for: " & fullPath
+    Set GetOpenWorkbookByFullPathWithDebug = Nothing
 End Function
 
 Private Function GetBetween(ByVal text As String, ByVal after As String, ByVal before As String) As String
