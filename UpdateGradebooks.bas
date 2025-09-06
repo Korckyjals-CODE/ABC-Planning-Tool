@@ -171,6 +171,18 @@ NextTemplate:
     Application.ScreenUpdating = prevScreenUpdating
     Application.DisplayAlerts = prevDisplayAlerts
     
+    ' Final verification
+    Log logLines, "FINAL: Open workbooks count at end: " & Application.Workbooks.Count
+    If Application.Workbooks.Count > 1 Then ' More than just ThisWorkbook
+        Log logLines, "WARNING: " & (Application.Workbooks.Count - 1) & " workbooks still open at end of process"
+        Dim wb As Workbook
+        For Each wb In Application.Workbooks
+            If wb.Name <> ThisWorkbook.Name Then
+                Log logLines, "Still open: " & wb.FullName
+            End If
+        Next wb
+    End If
+    
     ' Flush log
     DumpLogToImmediate logLines
     DumpLogToSheet logLines, "GRB_Log"
@@ -346,9 +358,27 @@ Private Sub CloseOpenedWorkbooks(ByVal openedRefs As Collection, ByRef globalOpe
             On Error Resume Next
             wb.Close SaveChanges:=False
             If Err.Number = 0 Then
-                Log logLines, "Closed: " & p
-                ' Also remove from global collection since it's now closed
-                RemoveFromGlobalCollection globalOpenedWorkbooks, p
+                ' Verify the workbook is actually closed
+                Dim wbStillOpen As Workbook
+                Set wbStillOpen = GetOpenWorkbookByFullPath(p)
+                If wbStillOpen Is Nothing Then
+                    Log logLines, "Closed: " & p
+                    ' Also remove from global collection since it's now closed
+                    RemoveFromGlobalCollection globalOpenedWorkbooks, p
+                Else
+                    Log logLines, "WARN: Close reported success but workbook still open: " & p
+                    ' Try more aggressive closing
+                    On Error Resume Next
+                    wbStillOpen.Close SaveChanges:=False
+                    If Err.Number = 0 Then
+                        Log logLines, "Retry close successful: " & p
+                        RemoveFromGlobalCollection globalOpenedWorkbooks, p
+                    Else
+                        Log logLines, "Retry close failed: " & p & " | " & Err.Description
+                        Err.Clear
+                    End If
+                    On Error GoTo 0
+                End If
             Else
                 Log logLines, "ERROR closing: " & p & " | " & Err.Description
                 Err.Clear
@@ -374,7 +404,14 @@ Private Sub CloseAllTrackedWorkbooks(ByVal globalOpenedWorkbooks As Collection, 
             On Error Resume Next
             wb.Close SaveChanges:=False
             If Err.Number = 0 Then
-                Log logLines, "ERROR CLEANUP - Closed: " & p
+                ' Verify the workbook is actually closed
+                Dim wbStillOpen As Workbook
+                Set wbStillOpen = GetOpenWorkbookByFullPath(p)
+                If wbStillOpen Is Nothing Then
+                    Log logLines, "ERROR CLEANUP - Closed: " & p
+                Else
+                    Log logLines, "ERROR CLEANUP - WARN: Close reported success but workbook still open: " & p
+                End If
             Else
                 Log logLines, "ERROR CLEANUP - Failed to close: " & p & " | " & Err.Description
                 Err.Clear
