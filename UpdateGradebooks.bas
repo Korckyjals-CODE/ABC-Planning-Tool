@@ -202,7 +202,7 @@ Public Sub GenerateRawGradebooks(ByVal strBimester As String)
         ' 4.4.1) Place formula in template if successfully opened
         If Not wbTemplate Is Nothing Then
             On Error Resume Next
-            PlaceFormulaInTemplate wbTemplate, logLines
+            PlaceFormulaInTemplate wbTemplate, xlApp, logLines
             If Err.Number <> 0 Then
                 formulaErrors = formulaErrors + 1
                 Log logLines, "ERROR placing formula in template: " & templatePath & " | " & Err.Description
@@ -361,7 +361,7 @@ Private Sub ReplaceFormulasWithValues(ByVal wb As Object, ByRef logLines As Coll
         Exit Sub
     End If
     
-    Dim ws As Worksheet
+    Dim ws As Object  ' Late-bound Worksheet
     If wb.Worksheets.Count <> 1 Then
         Log logLines, "WARN: Expected 1 sheet, found " & wb.Worksheets.Count & " in " & wb.Name & ". Using first sheet."
     End If
@@ -380,11 +380,11 @@ Private Sub ReplaceFormulasWithValues(ByVal wb As Object, ByRef logLines As Coll
         Exit Sub
     End If
     
-    Dim rng As Range
+    Dim rng As Object  ' Late-bound Range
     Set rng = ws.Range(ws.Cells(5, 3), ws.Cells(lastRow, lastCol)) ' C5 : lastRow,lastCol
     
     ' Replace formulas with values
-    Dim cell As Range
+    Dim cell As Object  ' Late-bound Range
     Dim cnt As Long
     For Each cell In rng.Cells
         If cell.HasFormula Then
@@ -396,8 +396,8 @@ Private Sub ReplaceFormulasWithValues(ByVal wb As Object, ByRef logLines As Coll
     Log logLines, "Replaced " & cnt & " formulas with values in " & wb.Name & " | Range=" & rng.Address(External:=False)
 End Sub
 
-Private Function GetLastNonEmptyRowInColumn(ByVal ws As Worksheet, ByVal colNum As Long) As Long
-    Dim lastCell As Range
+Private Function GetLastNonEmptyRowInColumn(ByVal ws As Object, ByVal colNum As Long) As Long
+    Dim lastCell As Object  ' Late-bound Range
     Set lastCell = ws.Cells(ws.Rows.Count, colNum).End(xlUp)
     If Len(lastCell.value) = 0 And lastCell.row = 1 Then
         GetLastNonEmptyRowInColumn = 0
@@ -406,7 +406,7 @@ Private Function GetLastNonEmptyRowInColumn(ByVal ws As Worksheet, ByVal colNum 
     End If
 End Function
 
-Private Function IsBlackFill(ByVal cell As Range) As Boolean
+Private Function IsBlackFill(ByVal cell As Object) As Boolean
     With cell.Interior
         If .pattern = xlNone Then Exit Function
         If .Color = vbBlack Or .ColorIndex = 1 Then
@@ -422,7 +422,7 @@ Private Function IsBlackFill(ByVal cell As Range) As Boolean
     End With
 End Function
 
-Private Function GetLastBlackBackgroundColInRow(ByVal ws As Worksheet, ByVal rowNum As Long) As Long
+Private Function GetLastBlackBackgroundColInRow(ByVal ws As Object, ByVal rowNum As Long) As Long
     Dim lastUsedCol As Long, c As Long
     lastUsedCol = ws.Cells(rowNum, ws.Columns.Count).End(xlToLeft).Column
     For c = lastUsedCol To 1 Step -1
@@ -434,7 +434,7 @@ Private Function GetLastBlackBackgroundColInRow(ByVal ws As Worksheet, ByVal row
     GetLastBlackBackgroundColInRow = 0
 End Function
 
-Private Function GetLastWeekColumnInRow(ByVal ws As Worksheet, ByVal rowNum As Long) As Long
+Private Function GetLastWeekColumnInRow(ByVal ws As Object, ByVal rowNum As Long) As Long
     Dim lastUsedCol As Long, c As Long
     lastUsedCol = ws.Cells(rowNum, ws.Columns.Count).End(xlToLeft).Column
     For c = lastUsedCol To 1 Step -1
@@ -448,7 +448,7 @@ Private Function GetLastWeekColumnInRow(ByVal ws As Worksheet, ByVal rowNum As L
     GetLastWeekColumnInRow = 0
 End Function
 
-Private Sub PlaceFormulaInTemplate(ByVal wb As Object, ByRef logLines As Collection)
+Private Sub PlaceFormulaInTemplate(ByVal wb As Object, ByVal xlApp As Object, ByRef logLines As Collection)
     ' Places the grade lookup formula in the template and copies it to the appropriate range
     
     ' Check if workbook object is valid
@@ -457,7 +457,7 @@ Private Sub PlaceFormulaInTemplate(ByVal wb As Object, ByRef logLines As Collect
         Exit Sub
     End If
     
-    Dim ws As Worksheet
+    Dim ws As Object  ' Late-bound Worksheet
     If wb.Worksheets.Count <> 1 Then
         Log logLines, "WARN: Expected 1 sheet, found " & wb.Worksheets.Count & " in " & wb.Name & ". Using first sheet."
     End If
@@ -529,7 +529,7 @@ Private Sub PlaceFormulaInTemplate(ByVal wb As Object, ByRef logLines As Collect
     On Error GoTo 0
     
     ' Copy formula to the rectangular range
-    Dim rng As Range
+    Dim rng As Object  ' Late-bound Range
     Set rng = ws.Range(ws.Cells(5, 3), ws.Cells(lastRow, lastCol)) ' C5 : lastRow,lastCol
     
     On Error Resume Next
@@ -543,8 +543,12 @@ Private Sub PlaceFormulaInTemplate(ByVal wb As Object, ByRef logLines As Collect
     End If
     On Error GoTo 0
     
-    ' Clear clipboard
-    Application.CutCopyMode = False
+    ' Clear clipboard using the correct Excel instance
+    If Not xlApp Is Nothing Then
+        On Error Resume Next
+        xlApp.CutCopyMode = False
+        On Error GoTo 0
+    End If
 End Sub
 
 Private Sub OpenMatchingFromSubfolders(ByVal xlApp As Object, ByVal xlAppCreated As Boolean, ByVal bimesterFolder As String, ByVal gradeCode As String, _
