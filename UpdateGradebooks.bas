@@ -193,16 +193,8 @@ NextTemplate:
         Log logLines, "Workbook: " & wbCheck.Name & " | Visible: " & wbCheck.Windows(1).Visible & " | Path: " & wbCheck.FullName
     Next wbCheck
     
-    ' Wait a moment and check again (timing issue detection)
-    Log logLines, "FINAL: Waiting 2 seconds and re-checking..."
-    SleepShort 2000
-    Log logLines, "FINAL: Re-check - Open workbooks count: " & Application.Workbooks.Count
-    If Application.Workbooks.Count > 1 Then
-        Log logLines, "FINAL: After delay - workbooks still open:"
-        For Each wbCheck In Application.Workbooks
-            Log logLines, "Still open after delay: " & wbCheck.Name & " | " & wbCheck.FullName
-        Next wbCheck
-    End If
+    ' Final verification - no delay needed since path mismatch is fixed
+    Log logLines, "FINAL: All workbooks should be closed now"
     
     ' Flush log
     DumpLogToImmediate logLines
