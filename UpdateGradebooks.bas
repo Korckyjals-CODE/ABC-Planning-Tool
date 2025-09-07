@@ -181,20 +181,12 @@ Public Sub GenerateRawGradebooks(ByVal strBimester As String)
         Dim wbTemplate As Object
         Set wbTemplate = GetOpenWorkbookByFullPathInInstance(xlApp, fullTemplatePath)
         If wbTemplate Is Nothing And xlAppCreated Then
-            On Error Resume Next
-            Set wbTemplate = xlApp.Workbooks.Open(fullTemplatePath)
-            If Err.Number = 0 Then
+            ' Use watchdog approach to handle COM object timing issues
+            Set wbTemplate = OpenWorkbookWithWatchdog(xlApp, fullTemplatePath, 10, logLines)
+            If Not wbTemplate Is Nothing Then
                 ' Track template workbook globally for error cleanup
                 globalOpenedWorkbooks.Add fullTemplatePath
-                Log logLines, "Opened template in invisible instance: " & fullTemplatePath
-                ' Add small delay to allow Excel to stabilize
-                SleepShort 100  ' 100ms delay
-            Else
-                Log logLines, "ERROR opening template: " & fullTemplatePath & " | " & Err.Description
-                Err.Clear
-                Set wbTemplate = Nothing
             End If
-            On Error GoTo ErrHandler
         ElseIf Not wbTemplate Is Nothing Then
             Log logLines, "Template already open in invisible instance: " & fullTemplatePath
         Else
@@ -536,15 +528,11 @@ Private Sub PlaceFormulaInTemplate(ByVal wb As Object, ByVal xlApp As Object, By
     formula = formula & "grade,IFERROR(XLOOKUP(clean_name,name_rng_xlsx,grade_rng_xlsx,""""),XLOOKUP(clean_name,name_rng_xlsm,grade_rng_xlsm,"""")),"
     formula = formula & "IFERROR(grade,""""))"
     
-    ' Place formula in C5
-    On Error Resume Next
-    ws.Range(FORMULA_START_CELL).Formula = formula
-    If Err.Number <> 0 Then
-        Log logLines, "ERROR placing formula in " & wb.Name & ": " & Err.Description
-        Err.Clear
+    ' Place formula in C5 using watchdog approach
+    If Not PlaceFormulaWithWatchdog(ws, formula, 10, logLines) Then
+        Log logLines, "ERROR: Failed to place formula in " & wb.Name & " after timeout"
         Exit Sub
     End If
-    On Error GoTo 0
     
     ' Copy formula to the rectangular range
     Dim rng As Object  ' Late-bound Range
@@ -590,20 +578,15 @@ Private Sub OpenMatchingFromSubfolders(ByVal xlApp As Object, ByVal xlAppCreated
 
                     ' Open only if not already open in the invisible instance; track only ones we open now
                     If GetOpenWorkbookByFullPathInInstance(xlApp, fullPath) Is Nothing And xlAppCreated Then
-                        On Error Resume Next
+                        ' Use watchdog approach to handle COM object timing issues
                         Dim wb As Object
-                        Set wb = xlApp.Workbooks.Open(fullPath)
-                        If Err.Number = 0 Then
+                        Set wb = OpenWorkbookWithWatchdog(xlApp, fullPath, 10, logLines)
+                        If Not wb Is Nothing Then
                             openedRefs.Add fullPath
                             globalOpenedWorkbooks.Add fullPath  ' Also track globally for error cleanup
                             openedAny = True
-                            Log logLines, "Opened in invisible instance: " & fullPath
                             Log logLines, "DEBUG: Added to openedRefs (count=" & openedRefs.Count & ") and globalOpenedWorkbooks (count=" & globalOpenedWorkbooks.Count & ")"
-                        Else
-                            Log logLines, "ERROR opening in invisible instance: " & fullPath & " | " & Err.Description
-                            Err.Clear
                         End If
-                        On Error GoTo 0
                     ElseIf Not GetOpenWorkbookByFullPathInInstance(xlApp, fullPath) Is Nothing Then
                         ' Already open in the invisible instance: do NOT close later
                         Log logLines, "Already open in invisible instance: " & fullPath
@@ -1056,6 +1039,102 @@ Private Sub SleepShort(ms As Long)
         DoEvents
     Loop
 End Sub
+
+' ===========================
+' Watchdog Functions for Timing Issues
+' ===========================
+
+Private Function OpenWorkbookWithWatchdog(ByVal xlApp As Object, ByVal filePath As String, ByVal timeoutSeconds As Long, ByRef logLines As Collection) As Object
+    ' Opens a workbook with retry logic and timeout to handle COM object timing issues
+    Dim startTime As Double
+    Dim wb As Object
+    Dim success As Boolean
+    Dim attemptCount As Long
+    
+    startTime = Timer
+    success = False
+    attemptCount = 0
+    
+    Do While (Timer - startTime) < timeoutSeconds
+        attemptCount = attemptCount + 1
+        
+        On Error Resume Next
+        Set wb = xlApp.Workbooks.Open(filePath)
+        If Err.Number = 0 And Not wb Is Nothing Then
+            ' Verify the workbook is actually accessible
+            Dim testCount As Long
+            testCount = wb.Worksheets.Count
+            If Err.Number = 0 Then
+                success = True
+                Log logLines, "SUCCESS: Opened workbook (attempt " & attemptCount & "): " & filePath
+                Exit Do
+            Else
+                Log logLines, "WARN: Workbook opened but not accessible (attempt " & attemptCount & "): " & filePath
+                Err.Clear
+                If Not wb Is Nothing Then
+                    wb.Close SaveChanges:=False
+                    Set wb = Nothing
+                End If
+            End If
+        Else
+            If attemptCount = 1 Then
+                Log logLines, "WARN: Failed to open workbook (attempt " & attemptCount & "): " & filePath & " | " & Err.Description
+            End If
+            Err.Clear
+        End If
+        On Error GoTo 0
+        
+        ' Small delay before retry
+        DoEvents
+        SleepShort 50
+    Loop
+    
+    If success Then
+        Set OpenWorkbookWithWatchdog = wb
+    Else
+        Log logLines, "ERROR: Failed to open workbook after " & attemptCount & " attempts in " & Format$(Timer - startTime, "0.0") & " seconds: " & filePath
+        Set OpenWorkbookWithWatchdog = Nothing
+    End If
+End Function
+
+Private Function PlaceFormulaWithWatchdog(ByVal ws As Object, ByVal formula As String, ByVal timeoutSeconds As Long, ByRef logLines As Collection) As Boolean
+    ' Places a formula with retry logic and timeout to handle worksheet timing issues
+    Dim startTime As Double
+    Dim success As Boolean
+    Dim attemptCount As Long
+    
+    startTime = Timer
+    success = False
+    attemptCount = 0
+    
+    Do While (Timer - startTime) < timeoutSeconds
+        attemptCount = attemptCount + 1
+        
+        On Error Resume Next
+        ws.Range(FORMULA_START_CELL).Formula = formula
+        If Err.Number = 0 Then
+            success = True
+            Log logLines, "SUCCESS: Placed formula (attempt " & attemptCount & ") in " & ws.Parent.Name
+            Exit Do
+        Else
+            If attemptCount = 1 Then
+                Log logLines, "WARN: Failed to place formula (attempt " & attemptCount & ") in " & ws.Parent.Name & " | " & Err.Description
+            End If
+            Err.Clear
+        End If
+        On Error GoTo 0
+        
+        ' Small delay before retry
+        DoEvents
+        SleepShort 50
+    Loop
+    
+    If Not success Then
+        Log logLines, "ERROR: Failed to place formula after " & attemptCount & " attempts in " & Format$(Timer - startTime, "0.0") & " seconds in " & ws.Parent.Name
+    End If
+    
+    PlaceFormulaWithWatchdog = success
+End Function
 
 ' ===========================
 ' Logging
