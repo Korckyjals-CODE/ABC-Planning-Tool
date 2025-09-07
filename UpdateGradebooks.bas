@@ -354,7 +354,7 @@ Private Sub ReplaceFormulasWithValues(ByVal wb As Object, ByRef logLines As Coll
     ' - Single sheet in template
     ' - Rectangular range starts at C5
     ' - Last row: last non-empty cell in column B
-    ' - Last column: last cell in row 3 that has a black background
+    ' - Last column: prefer "Week ..." headers in row 3; fall back to dark/black fill
     ' - Replace only formulas in that area with their current values
     
     ' Check if workbook object is valid
@@ -387,9 +387,14 @@ Private Sub ReplaceFormulasWithValues(ByVal wb As Object, ByRef logLines As Coll
         Exit Sub
     End If
     
-    lastCol = GetLastBlackBackgroundColInRow(ws, 3)  ' row 3 = 3
+    ' >>> Key change: use the same rule as PlaceFormulaInTemplate <<<
+    lastCol = GetLastWeekColumnInRow(ws, 3)       ' try by "Week ..." header text
     If lastCol < 3 Then
-        Log logLines, "INFO: No header columns with black background found. Skipping: " & wb.Name
+        ' Fallback for older templates where headers are only styled (dark fill)
+        lastCol = GetLastBlackBackgroundColInRow(ws, 3)
+    End If
+    If lastCol < 3 Then
+        Log logLines, "INFO: No header columns detected in row 3 (text/fill). Skipping: " & wb.Name
         Exit Sub
     End If
     
