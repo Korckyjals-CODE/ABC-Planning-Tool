@@ -187,6 +187,8 @@ Public Sub GenerateRawGradebooks(ByVal strBimester As String)
                 ' Track template workbook globally for error cleanup
                 globalOpenedWorkbooks.Add fullTemplatePath
                 Log logLines, "Opened template in invisible instance: " & fullTemplatePath
+                ' Add small delay to allow Excel to stabilize
+                SleepShort 100  ' 100ms delay
             Else
                 Log logLines, "ERROR opening template: " & fullTemplatePath & " | " & Err.Description
                 Err.Clear
@@ -213,10 +215,10 @@ Public Sub GenerateRawGradebooks(ByVal strBimester As String)
         
         ' 4.5) Replace formulas by values in the single sheet's rectangular range
         If Not wbTemplate Is Nothing Then
-            ' Additional validation: check if workbook is still valid
+            ' More robust validation: check if workbook is still valid
             On Error Resume Next
-            Dim testName As String
-            testName = wbTemplate.Name
+            Dim testCount As Long
+            testCount = wbTemplate.Worksheets.Count  ' This is safer than accessing .Name
             If Err.Number <> 0 Then
                 Log logLines, "WARN: Workbook object became invalid before ReplaceFormulasWithValues: " & templatePath
                 Err.Clear
@@ -360,6 +362,17 @@ Private Sub ReplaceFormulasWithValues(ByVal wb As Object, ByRef logLines As Coll
         Log logLines, "ERROR: ReplaceFormulasWithValues called with Nothing workbook object"
         Exit Sub
     End If
+    
+    ' Additional validation - check if workbook is still accessible
+    On Error Resume Next
+    Dim testCount As Long
+    testCount = wb.Worksheets.Count
+    If Err.Number <> 0 Then
+        Log logLines, "ERROR: Workbook object is no longer accessible in ReplaceFormulasWithValues"
+        Err.Clear
+        Exit Sub
+    End If
+    On Error GoTo 0
     
     Dim ws As Object  ' Late-bound Worksheet
     If wb.Worksheets.Count <> 1 Then
