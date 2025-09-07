@@ -196,7 +196,7 @@ Public Sub GenerateRawGradebooks(ByVal strBimester As String)
         ' 4.4.1) Place formula in template if successfully opened
         If Not wbTemplate Is Nothing Then
             On Error Resume Next
-            PlaceFormulaInTemplate wbTemplate, xlApp, logLines
+            PlaceFormulaInTemplateByPath xlApp, fullTemplatePath, logLines
             If Err.Number <> 0 Then
                 formulaErrors = formulaErrors + 1
                 Log logLines, "ERROR placing formula in template: " & templatePath & " | " & Err.Description
@@ -206,35 +206,23 @@ Public Sub GenerateRawGradebooks(ByVal strBimester As String)
         End If
         
         ' 4.5) Replace formulas by values in the single sheet's rectangular range
+        ' Always use fresh workbook reference to avoid stale object issues
+        Set wbTemplate = GetOpenWorkbookByFullPathInInstance(xlApp, fullTemplatePath)
         If Not wbTemplate Is Nothing Then
-            ' More robust validation: check if workbook is still valid
             On Error Resume Next
-            Dim testCount As Long
-            testCount = wbTemplate.Worksheets.Count  ' This is safer than accessing .Name
+            ReplaceFormulasWithValuesByPath xlApp, fullTemplatePath, logLines
             If Err.Number <> 0 Then
-                Log logLines, "WARN: Workbook object became invalid before ReplaceFormulasWithValues: " & templatePath
+                Log logLines, "ERROR replacing formulas: " & templatePath & " | " & Err.Description
                 Err.Clear
-                Set wbTemplate = Nothing
             End If
             On Error GoTo ErrHandler
-            
-            If Not wbTemplate Is Nothing Then
-                On Error Resume Next
-                ReplaceFormulasWithValues wbTemplate, logLines
-                If Err.Number <> 0 Then
-                    Log logLines, "ERROR replacing formulas: " & templatePath & " | " & Err.Description
-                    Err.Clear
-                End If
-                On Error GoTo ErrHandler
-            Else
-                Log logLines, "SKIP replacing formulas - template workbook became invalid: " & templatePath
-            End If
         Else
             Log logLines, "SKIP replacing formulas - template workbook not available: " & templatePath
         End If
         
         ' 4.6) Save & close template
-        ' Try to save/close template, but ensure we still close the support files
+        ' Get fresh workbook reference for save/close operations
+        Set wbTemplate = GetOpenWorkbookByFullPathInInstance(xlApp, fullTemplatePath)
         Log logLines, "DEBUG: Before template close - Open workbooks count: " & Application.Workbooks.Count
         If Not wbTemplate Is Nothing Then
             On Error GoTo TemplateCloseErr
@@ -340,6 +328,39 @@ End Sub
 ' ===========================
 ' Helpers
 ' ===========================
+
+Private Sub ReplaceFormulasWithValuesByPath(ByVal xlApp As Object, ByVal filePath As String, ByRef logLines As Collection)
+    ' Replaces formulas with values using fresh workbook reference
+    Dim wb As Object
+    Set wb = GetOpenWorkbookByFullPathInInstance(xlApp, filePath)
+    
+    If wb Is Nothing Then
+        Log logLines, "ERROR: ReplaceFormulasWithValuesByPath - workbook not found: " & filePath
+        Exit Sub
+    End If
+    
+    ' Check if workbook object is valid
+    On Error Resume Next
+    Dim testCount As Long
+    testCount = wb.Worksheets.Count
+    If Err.Number <> 0 Then
+        Log logLines, "WARN: ReplaceFormulasWithValuesByPath - workbook object is no longer accessible, attempting to reopen: " & filePath
+        Err.Clear
+        On Error GoTo 0
+        
+        ' Try to reopen the workbook
+        Set wb = OpenWorkbookWithWatchdog(xlApp, filePath, 10, logLines)
+        If wb Is Nothing Then
+            Log logLines, "ERROR: ReplaceFormulasWithValuesByPath - failed to reopen workbook: " & filePath
+            Exit Sub
+        End If
+    Else
+        On Error GoTo 0
+    End If
+    
+    ' Call the original function with the fresh workbook object
+    ReplaceFormulasWithValues wb, logLines
+End Sub
 
 Private Sub ReplaceFormulasWithValues(ByVal wb As Object, ByRef logLines As Collection)
     ' Specs:
@@ -457,6 +478,39 @@ Private Function GetLastWeekColumnInRow(ByVal ws As Object, ByVal rowNum As Long
     Next c
     GetLastWeekColumnInRow = 0
 End Function
+
+Private Sub PlaceFormulaInTemplateByPath(ByVal xlApp As Object, ByVal filePath As String, ByRef logLines As Collection)
+    ' Places the grade lookup formula in the template using fresh workbook reference
+    Dim wb As Object
+    Set wb = GetOpenWorkbookByFullPathInInstance(xlApp, filePath)
+    
+    If wb Is Nothing Then
+        Log logLines, "ERROR: PlaceFormulaInTemplateByPath - workbook not found: " & filePath
+        Exit Sub
+    End If
+    
+    ' Check if workbook object is valid
+    On Error Resume Next
+    Dim testCount As Long
+    testCount = wb.Worksheets.Count
+    If Err.Number <> 0 Then
+        Log logLines, "WARN: PlaceFormulaInTemplateByPath - workbook object is no longer accessible, attempting to reopen: " & filePath
+        Err.Clear
+        On Error GoTo 0
+        
+        ' Try to reopen the workbook
+        Set wb = OpenWorkbookWithWatchdog(xlApp, filePath, 10, logLines)
+        If wb Is Nothing Then
+            Log logLines, "ERROR: PlaceFormulaInTemplateByPath - failed to reopen workbook: " & filePath
+            Exit Sub
+        End If
+    Else
+        On Error GoTo 0
+    End If
+    
+    ' Call the original function with the fresh workbook object
+    PlaceFormulaInTemplate wb, xlApp, logLines
+End Sub
 
 Private Sub PlaceFormulaInTemplate(ByVal wb As Object, ByVal xlApp As Object, ByRef logLines As Collection)
     ' Places the grade lookup formula in the template and copies it to the appropriate range
