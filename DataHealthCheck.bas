@@ -459,10 +459,10 @@ Private Sub SetupHealthReportSheet(ByVal ws As Worksheet)
     headerData = Array("Data Health Check Report", "Generated on: " & Format(Now, "yyyy-mm-dd hh:mm:ss"), "", "", _
                       "Timestamp", "Workbook", "Sheet", "Status", "Issues Count", "Issue Details")
     
-    instructionData = Array("Instructions:", "• Green status = No issues found", _
-                           "• Red status = Issues found - review details in column F", _
-                           "• Click on any row to see more details", _
-                           "• This report updates automatically with each health check")
+    instructionData = Array("Instructions:", "- Green status = No issues found", _
+                           "- Red status = Issues found - review details in column F", _
+                           "- Click on any row to see more details", _
+                           "- This report updates automatically with each health check")
     
     With ws
         ' Clear any existing content
@@ -768,6 +768,9 @@ Public Sub ClearPreviousHealthReportEntries()
         
         ' Update the generation timestamp
         reportWs.Cells(2, 1).Value = "Generated on: " & Format(Now, "yyyy-mm-dd hh:mm:ss")
+        
+        ' Regenerate the instruction section with corrected characters
+        SetupHealthReportSheet reportWs
     End If
 End Sub
 
