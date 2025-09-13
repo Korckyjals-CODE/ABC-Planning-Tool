@@ -257,13 +257,23 @@ End Function
 
 Private Function GetClassWeight(ByVal ws As Worksheet, ByVal colNum As Integer) As Double
     ' Get the weight percentage for a class column
-    Dim weightStr As String
-    weightStr = CStr(ws.Cells(2, colNum).Value)
+    ' Handle percentage format cells (decimal values 0-1)
+    Dim cellValue As Variant
+    cellValue = ws.Cells(2, colNum).Value
     
-    If weightStr Like "*%" Then
-        GetClassWeight = CDbl(Replace(weightStr, "%", ""))
+    ' Check if cell contains a numeric value
+    If IsNumeric(cellValue) Then
+        ' Convert decimal to percentage (0.1 = 10%, 1.0 = 100%)
+        GetClassWeight = CDbl(cellValue) * 100
     Else
-        GetClassWeight = 0
+        ' Fallback for text-based percentages (legacy support)
+        Dim weightStr As String
+        weightStr = CStr(cellValue)
+        If weightStr Like "*%" Then
+            GetClassWeight = CDbl(Replace(weightStr, "%", ""))
+        Else
+            GetClassWeight = 0
+        End If
     End If
 End Function
 
