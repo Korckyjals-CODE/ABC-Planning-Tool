@@ -349,8 +349,8 @@ Private Function GetOrCreateHealthReportSheet() As Worksheet
     Dim reportWs As Worksheet
     Dim planningWb As Workbook
     
-    ' Get the planning workbook (where this code resides)
-    Set planningWb = ThisWorkbook
+    ' Get the planning workbook by finding the workbook that contains this code
+    Set planningWb = GetPlanningWorkbook
     
     ' Try to get existing sheet
     On Error Resume Next
@@ -365,6 +365,28 @@ Private Function GetOrCreateHealthReportSheet() As Worksheet
     End If
     
     Set GetOrCreateHealthReportSheet = reportWs
+End Function
+
+Private Function GetPlanningWorkbook() As Workbook
+    ' Get the planning workbook that contains this VBA code
+    Dim wb As Workbook
+    
+    ' Try to find the planning workbook by looking for a characteristic sheet or name
+    For Each wb In Application.Workbooks
+        ' Check if this workbook contains the planning sheets (like wsSchedule, wsProjects, etc.)
+        On Error Resume Next
+        If Not wb.Worksheets("wsSchedule") Is Nothing Or _
+           Not wb.Worksheets("wsProjects") Is Nothing Or _
+           wb.Name Like "*Planning*" Then
+            Set GetPlanningWorkbook = wb
+            On Error GoTo 0
+            Exit Function
+        End If
+        On Error GoTo 0
+    Next wb
+    
+    ' If not found, fall back to ThisWorkbook (should be the planning workbook)
+    Set GetPlanningWorkbook = ThisWorkbook
 End Function
 
 Private Sub SetupHealthReportSheet(ByVal ws As Worksheet)
@@ -489,7 +511,9 @@ End Sub
 
 Private Sub ReportHealthIssues(ByVal issues As Collection, ByVal sheetName As String)
     ' Legacy function - now redirects to sheet-based reporting
-    ReportHealthIssuesToSheet issues, sheetName, ThisWorkbook.Name
+    Dim planningWb As Workbook
+    Set planningWb = GetPlanningWorkbook
+    ReportHealthIssuesToSheet issues, sheetName, planningWb.Name
 End Sub
 
 ' ===========================
@@ -611,7 +635,7 @@ Public Sub ClearHealthReport()
     Dim planningWb As Workbook
     
     ' Get the planning workbook (where this code resides)
-    Set planningWb = ThisWorkbook
+    Set planningWb = GetPlanningWorkbook
     
     On Error Resume Next
     Set reportWs = planningWb.Worksheets(HEALTH_REPORT_SHEET_NAME)
@@ -633,7 +657,7 @@ Public Sub ShowHealthReport()
     Dim planningWb As Workbook
     
     ' Get the planning workbook (where this code resides)
-    Set planningWb = ThisWorkbook
+    Set planningWb = GetPlanningWorkbook
     
     On Error Resume Next
     Set reportWs = planningWb.Worksheets(HEALTH_REPORT_SHEET_NAME)
