@@ -35,7 +35,23 @@ Public Sub RunHealthCheckOnWorkbook(ByVal wb As Workbook)
     Dim issuesFound As Boolean
     Dim totalSheets As Long
     Dim processedSheets As Long
+    Dim originalScreenUpdating As Boolean
+    Dim originalCalculation As XlCalculation
+    Dim originalEvents As Boolean
+    
     issuesFound = False
+    
+    ' Store original Excel settings for performance optimization
+    originalScreenUpdating = Application.ScreenUpdating
+    originalCalculation = Application.Calculation
+    originalEvents = Application.EnableEvents
+    
+    ' Disable Excel features for faster execution and to prevent workbook visibility
+    Application.ScreenUpdating = False
+    Application.Calculation = xlCalculationManual
+    Application.EnableEvents = False
+    
+    On Error GoTo RestoreSettings
     
     ' Clear previous entries for workbook health check runs
     ClearPreviousHealthReportEntries
@@ -82,6 +98,17 @@ Public Sub RunHealthCheckOnWorkbook(ByVal wb As Workbook)
     If Not issuesFound Then
         MsgBox "No weekly gradebook sheets found in: " & wb.Name, vbInformation, "Health Check"
     End If
+    
+RestoreSettings:
+    ' Restore Excel settings
+    Application.ScreenUpdating = originalScreenUpdating
+    Application.Calculation = originalCalculation
+    Application.EnableEvents = originalEvents
+    
+    If Err.Number <> 0 Then
+        Debug.Print "Error in RunHealthCheckOnWorkbook: " & Err.Description
+        Err.Clear
+    End If
 End Sub
 
 Public Sub RunHealthCheckOnFile(ByVal filePath As String)
@@ -89,6 +116,7 @@ Public Sub RunHealthCheckOnFile(ByVal filePath As String)
     Dim wb As Workbook
     Dim xlApp As Object
     Dim xlAppCreated As Boolean
+    Dim originalVisibleState As Boolean
     
     ' Try to get existing Excel instance first
     On Error Resume Next
@@ -105,7 +133,11 @@ Public Sub RunHealthCheckOnFile(ByVal filePath As String)
         Exit Sub
     End If
     
-    ' Open the workbook
+    ' Store original visibility state and ensure Excel instance is hidden
+    originalVisibleState = xlApp.Visible
+    xlApp.Visible = False
+    
+    ' Open the workbook with hidden state
     On Error Resume Next
     Set wb = xlApp.Workbooks.Open(filePath)
     If Err.Number <> 0 Then
@@ -115,6 +147,12 @@ Public Sub RunHealthCheckOnFile(ByVal filePath As String)
         Exit Sub
     End If
     On Error GoTo 0
+    
+    ' Ensure workbook windows are hidden
+    Dim w As Window
+    For Each w In wb.Windows
+        w.Visible = False
+    Next w
     
     ' Run health check
     RunHealthCheckOnWorkbook wb
