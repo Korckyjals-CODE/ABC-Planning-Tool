@@ -345,17 +345,21 @@ Private Sub ReportHealthIssuesToSheet(ByVal issues As Collection, ByVal sheetNam
 End Sub
 
 Private Function GetOrCreateHealthReportSheet() As Worksheet
-    ' Get existing health report sheet or create a new one
+    ' Get existing health report sheet or create a new one in the planning workbook
     Dim reportWs As Worksheet
+    Dim planningWb As Workbook
+    
+    ' Get the planning workbook (where this code resides)
+    Set planningWb = ThisWorkbook
     
     ' Try to get existing sheet
     On Error Resume Next
-    Set reportWs = ActiveWorkbook.Worksheets(HEALTH_REPORT_SHEET_NAME)
+    Set reportWs = planningWb.Worksheets(HEALTH_REPORT_SHEET_NAME)
     On Error GoTo 0
     
     ' If sheet doesn't exist, create it
     If reportWs Is Nothing Then
-        Set reportWs = ActiveWorkbook.Worksheets.Add
+        Set reportWs = planningWb.Worksheets.Add
         reportWs.Name = HEALTH_REPORT_SHEET_NAME
         SetupHealthReportSheet reportWs
     End If
@@ -485,7 +489,7 @@ End Sub
 
 Private Sub ReportHealthIssues(ByVal issues As Collection, ByVal sheetName As String)
     ' Legacy function - now redirects to sheet-based reporting
-    ReportHealthIssuesToSheet issues, sheetName, ActiveWorkbook.Name
+    ReportHealthIssuesToSheet issues, sheetName, ThisWorkbook.Name
 End Sub
 
 ' ===========================
@@ -602,35 +606,45 @@ End Sub
 ' ===========================
 
 Public Sub ClearHealthReport()
-    ' Clear the health report sheet
+    ' Clear the health report sheet from the planning workbook
     Dim reportWs As Worksheet
+    Dim planningWb As Workbook
+    
+    ' Get the planning workbook (where this code resides)
+    Set planningWb = ThisWorkbook
     
     On Error Resume Next
-    Set reportWs = ActiveWorkbook.Worksheets(HEALTH_REPORT_SHEET_NAME)
+    Set reportWs = planningWb.Worksheets(HEALTH_REPORT_SHEET_NAME)
     On Error GoTo 0
     
     If Not reportWs Is Nothing Then
         If MsgBox("Are you sure you want to clear the health report?", vbYesNo + vbQuestion, "Clear Health Report") = vbYes Then
             reportWs.Delete
-            MsgBox "Health report cleared.", vbInformation, "Health Report"
+            MsgBox "Health report cleared from planning workbook.", vbInformation, "Health Report"
         End If
     Else
-        MsgBox "No health report found to clear.", vbInformation, "Health Report"
+        MsgBox "No health report found to clear in planning workbook.", vbInformation, "Health Report"
     End If
 End Sub
 
 Public Sub ShowHealthReport()
-    ' Show the health report sheet
+    ' Show the health report sheet from the planning workbook
     Dim reportWs As Worksheet
+    Dim planningWb As Workbook
+    
+    ' Get the planning workbook (where this code resides)
+    Set planningWb = ThisWorkbook
     
     On Error Resume Next
-    Set reportWs = ActiveWorkbook.Worksheets(HEALTH_REPORT_SHEET_NAME)
+    Set reportWs = planningWb.Worksheets(HEALTH_REPORT_SHEET_NAME)
     On Error GoTo 0
     
     If Not reportWs Is Nothing Then
+        ' Switch to planning workbook and activate the report sheet
+        planningWb.Activate
         reportWs.Activate
         reportWs.Cells(1, 1).Select
     Else
-        MsgBox "No health report found. Run a health check first.", vbInformation, "Health Report"
+        MsgBox "No health report found in planning workbook. Run a health check first.", vbInformation, "Health Report"
     End If
 End Sub
