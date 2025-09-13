@@ -42,6 +42,44 @@ Public Sub GenerateRawGradebooks(ByVal strBimester As String)
     strBimesterFolderURL = JoinPath(strGradebooksTempFolderURL, strBimester)   ' e.g., B1
 
     ' ======================================================
+    ' Initialize logging for health check validation
+    ' ======================================================
+    Dim logLines As Collection
+    Set logLines = New Collection
+
+    ' ======================================================
+    ' Health Check Validation - NEW
+    ' ======================================================
+    
+    ' Check if health report has unresolved issues
+    If CheckHealthReportForIssues(24) Then ' 24 hour threshold
+        Dim response As VbMsgBoxResult
+        response = MsgBox("WARNING: Health check issues detected or no recent health check found." & vbCrLf & vbCrLf & _
+                         "Running GenerateRawGradebooks with files that have issues may lead to incorrect grades." & vbCrLf & vbCrLf & _
+                         "Do you want to:" & vbCrLf & _
+                         "• YES: View health report and fix issues first" & vbCrLf & _
+                         "• NO: Proceed anyway (not recommended)" & vbCrLf & _
+                         "• CANCEL: Abort and run health check manually", _
+                         vbYesNoCancel + vbExclamation, "Health Check Required")
+        
+        Select Case response
+            Case vbYes
+                ' Show health report for user to review
+                ShowHealthReport
+                MsgBox "Please review the health report, fix all issues, then run GenerateRawGradebooks again.", _
+                       vbInformation, "Fix Issues First"
+                Exit Sub
+                
+            Case vbNo
+                Log logLines, "WARNING: Proceeding with GenerateRawGradebooks despite health check issues"
+                
+            Case vbCancel
+                Log logLines, "GenerateRawGradebooks aborted by user - health check issues must be resolved"
+                Exit Sub
+        End Select
+    End If
+
+    ' ======================================================
     
     Dim fso As Object
     Dim prevCalc As XlCalculation
@@ -53,9 +91,6 @@ Public Sub GenerateRawGradebooks(ByVal strBimester As String)
     ' New invisible Excel instance for opening files
     Dim xlApp As Object
     Dim xlAppCreated As Boolean
-    
-    Dim logLines As Collection
-    Set logLines = New Collection
     
     ' Global tracking for all opened workbooks (for error cleanup)
     Dim globalOpenedWorkbooks As Collection

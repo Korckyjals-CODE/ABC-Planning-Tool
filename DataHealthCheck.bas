@@ -1427,3 +1427,103 @@ Public Sub ShowHealthReport()
         MsgBox "No health report found in planning workbook. Run a health check first.", vbInformation, "Health Report"
     End If
 End Sub
+
+' ===========================
+' Health Check Validation for GenerateRawGradebooks
+' ===========================
+
+Public Function CheckHealthReportForIssues(Optional ByVal hoursThreshold As Integer = 24) As Boolean
+    ' Check if HealthReport sheet has any unresolved issues
+    ' Returns True if issues found, False if no issues and recent health check exists
+    ' Parameters:
+    '   hoursThreshold: How many hours back to consider a health check "recent" (default: 24)
+    
+    Dim reportWs As Worksheet
+    Dim planningWb As Workbook
+    Dim lastRow As Long
+    Dim i As Long
+    Dim hasRecentHealthCheck As Boolean
+    Dim hasIssues As Boolean
+    Dim healthCheckThreshold As Date
+    
+    ' Define threshold: health check should be within specified hours
+    healthCheckThreshold = Now - (hoursThreshold / 24)
+    
+    ' Get the health report sheet
+    On Error Resume Next
+    Set planningWb = GetPlanningWorkbook
+    Set reportWs = planningWb.Worksheets(HEALTH_REPORT_SHEET_NAME)
+    On Error GoTo 0
+    
+    ' If no health report exists, return True (assume issues exist)
+    If reportWs Is Nothing Then
+        CheckHealthReportForIssues = True
+        Debug.Print "Health Check Validation: No health report found - assuming issues exist"
+        Exit Function
+    End If
+    
+    lastRow = reportWs.Cells(reportWs.Rows.Count, 1).End(xlUp).Row
+    hasRecentHealthCheck = False
+    hasIssues = False
+    
+    ' Check health report entries (skip header rows 1-10)
+    For i = 11 To lastRow
+        Dim timestamp As Date
+        Dim status As String
+        Dim issueCount As Long
+        
+        On Error Resume Next
+        timestamp = reportWs.Cells(i, 1).Value
+        status = reportWs.Cells(i, 4).Value
+        issueCount = reportWs.Cells(i, 5).Value
+        On Error GoTo 0
+        
+        ' Check if this is a recent health check (within threshold)
+        If timestamp > healthCheckThreshold Then
+            hasRecentHealthCheck = True
+            
+            ' Check if there are issues
+            If issueCount > 0 Or InStr(status, "ISSUES") > 0 Then
+                hasIssues = True
+                Debug.Print "Health Check Validation: Issues found in recent health check - " & reportWs.Cells(i, 2).Value & " / " & reportWs.Cells(i, 3).Value
+                Exit For ' Found issues, no need to continue
+            End If
+        End If
+    Next i
+    
+    ' Log the validation result
+    If Not hasRecentHealthCheck Then
+        Debug.Print "Health Check Validation: No recent health check found (within " & hoursThreshold & " hours)"
+    ElseIf Not hasIssues Then
+        Debug.Print "Health Check Validation: Recent health check found with no issues"
+    End If
+    
+    ' Return True if issues found OR no recent health check
+    CheckHealthReportForIssues = (hasIssues Or Not hasRecentHealthCheck)
+End Function
+
+' ===========================
+' Test Function for Health Check Validation
+' ===========================
+
+Public Sub TestHealthCheckValidation()
+    ' Test function to verify the health check validation works correctly
+    ' This can be called from the immediate window for testing
+    
+    Debug.Print "=== Testing Health Check Validation ==="
+    
+    ' Test with different time thresholds
+    Dim hasIssues24h As Boolean
+    Dim hasIssues1h As Boolean
+    Dim hasIssues168h As Boolean ' 1 week
+    
+    hasIssues24h = CheckHealthReportForIssues(24)
+    hasIssues1h = CheckHealthReportForIssues(1)
+    hasIssues168h = CheckHealthReportForIssues(168)
+    
+    Debug.Print "Health Check Status (24h threshold): " & IIf(hasIssues24h, "ISSUES FOUND", "NO ISSUES")
+    Debug.Print "Health Check Status (1h threshold): " & IIf(hasIssues1h, "ISSUES FOUND", "NO ISSUES")
+    Debug.Print "Health Check Status (168h threshold): " & IIf(hasIssues168h, "ISSUES FOUND", "NO ISSUES")
+    
+    Debug.Print "=== Test Complete ==="
+End Sub
