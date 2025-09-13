@@ -33,18 +33,51 @@ Public Sub RunHealthCheckOnWorkbook(ByVal wb As Workbook)
     ' Run health check on a specific workbook (for external gradebooks)
     Dim ws As Worksheet
     Dim issuesFound As Boolean
+    Dim totalSheets As Long
+    Dim processedSheets As Long
     issuesFound = False
     
     ' Clear previous entries for workbook health check runs
     ClearPreviousHealthReportEntries
     
+    ' Count total gradebook sheets for progress tracking
     For Each ws In wb.Worksheets
         If IsWeeklyGradebook(ws) Then
+            totalSheets = totalSheets + 1
+        End If
+    Next ws
+    
+    ' Initialize ProgressBar if we have sheets to process
+    Dim MyProgressbar As ProgressBar
+    If totalSheets > 0 Then
+        Set MyProgressbar = New ProgressBar
+        
+        With MyProgressbar
+            .Title = "Health Check - " & wb.Name
+            .ExcelStatusBar = True
+            .StartColour = rgbMediumSeaGreen
+            .EndColour = rgbGreen
+            .TotalActions = totalSheets
+        End With
+        
+        MyProgressbar.ShowBar
+    End If
+    
+    ' Process worksheets with progress tracking
+    For Each ws In wb.Worksheets
+        If IsWeeklyGradebook(ws) Then
+            processedSheets = processedSheets + 1
+            MyProgressbar.NextAction "Checking '" & ws.Name & "'", True
             Debug.Print "Running health check on: " & wb.Name & " - " & ws.Name
-            ValidateWeeklyGradebookBasic ws
+            ValidateWeeklyGradebookBasic ws, MyProgressbar
             issuesFound = True
         End If
     Next ws
+    
+    ' Complete progress bar
+    If Not MyProgressbar Is Nothing Then
+        MyProgressbar.Complete 2, "Health check complete for " & wb.Name
+    End If
     
     If Not issuesFound Then
         MsgBox "No weekly gradebook sheets found in: " & wb.Name, vbInformation, "Health Check"
@@ -146,7 +179,7 @@ End Function
 ' Basic Weekly Gradebook Validation
 ' ===========================
 
-Private Sub ValidateWeeklyGradebookBasic(ByVal ws As Worksheet)
+Private Sub ValidateWeeklyGradebookBasic(ByVal ws As Worksheet, Optional ByRef MyProgressbar As ProgressBar = Nothing)
     Dim issues As Collection
     Set issues = New Collection
     
@@ -154,15 +187,27 @@ Private Sub ValidateWeeklyGradebookBasic(ByVal ws As Worksheet)
     Debug.Print "Starting health check for: " & ws.Name
     
     ' Check for classes with default grades but non-zero weight
+    If Not MyProgressbar Is Nothing Then
+        MyProgressbar.StatusMessage = "Checking default grades with weights for '" & ws.Name & "'"
+    End If
     CheckDefaultGradesWithWeight ws, issues
     
     ' Check weight sum
+    If Not MyProgressbar Is Nothing Then
+        MyProgressbar.StatusMessage = "Checking weight sum for '" & ws.Name & "'"
+    End If
     CheckWeightSum ws, issues
     
     ' Check for empty student rows with default grades
+    If Not MyProgressbar Is Nothing Then
+        MyProgressbar.StatusMessage = "Checking empty student rows for '" & ws.Name & "'"
+    End If
     CheckEmptyStudentRows ws, issues
     
     ' Report results to health report sheet
+    If Not MyProgressbar Is Nothing Then
+        MyProgressbar.StatusMessage = "Generating health report for '" & ws.Name & "'"
+    End If
     ReportHealthIssuesToSheet issues, ws.Name, ws.Parent.Name
 End Sub
 
@@ -701,6 +746,7 @@ Public Sub RunHealthCheckOnFolder(ByVal folderPath As String, Optional ByVal bim
     Dim folder As Object
     Dim file As Object
     Dim processedCount As Integer
+    Dim totalFiles As Long
     
     Set fso = CreateObject("Scripting.FileSystemObject")
     
@@ -715,20 +761,53 @@ Public Sub RunHealthCheckOnFolder(ByVal folderPath As String, Optional ByVal bim
     Set folder = fso.GetFolder(folderPath)
     processedCount = 0
     
+    ' Count total .xlsx files for progress tracking
+    For Each file In folder.Files
+        If LCase(fso.GetExtensionName(file.Name)) = "xlsx" Then
+            If bimester = "" Or InStr(1, file.Name, bimester, vbTextCompare) > 0 Then
+                totalFiles = totalFiles + 1
+            End If
+        End If
+    Next file
+    
+    ' Initialize ProgressBar if we have files to process
+    Dim MyProgressbar As ProgressBar
+    If totalFiles > 0 Then
+        Set MyProgressbar = New ProgressBar
+        
+        With MyProgressbar
+            .Title = "Health Check - Folder: " & fso.GetBaseName(folderPath)
+            If bimester <> "" Then .Title = .Title & " (" & bimester & ")"
+            .ExcelStatusBar = True
+            .StartColour = rgbMediumSeaGreen
+            .EndColour = rgbGreen
+            .TotalActions = totalFiles
+        End With
+        
+        MyProgressbar.ShowBar
+    End If
+    
     Debug.Print "=== Starting Health Check on Folder ==="
     Debug.Print "Folder: " & folderPath
     If bimester <> "" Then Debug.Print "Bimester: " & bimester
+    Debug.Print "Files to process: " & totalFiles
     Debug.Print "======================================="
     
     For Each file In folder.Files
         If LCase(fso.GetExtensionName(file.Name)) = "xlsx" Then
             If bimester = "" Or InStr(1, file.Name, bimester, vbTextCompare) > 0 Then
+                processedCount = processedCount + 1
+                MyProgressbar.NextAction "Processing '" & file.Name & "'", True
                 Debug.Print "Processing: " & file.Name
                 RunHealthCheckOnFile file.Path
-                processedCount = processedCount + 1
             End If
         End If
     Next file
+    
+    ' Complete progress bar
+    If Not MyProgressbar Is Nothing Then
+        MyProgressbar.Complete 3, "Health check complete on " & processedCount & " files"
+    End If
     
     Debug.Print "=== Health Check Complete ==="
     Debug.Print "Files processed: " & processedCount
