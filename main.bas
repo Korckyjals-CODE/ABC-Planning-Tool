@@ -2334,7 +2334,7 @@ End Sub
 ' Health Check for External Files
 ' ===========================
 
-Sub RunHealthCheckOnFile()
+Sub RunHealthCheckOnFileMain()
     ' Run health check on a specific file
     Dim filePath As String
     filePath = InputBox("Enter the full path to the gradebook file:", "Health Check File")
@@ -2344,7 +2344,7 @@ Sub RunHealthCheckOnFile()
     End If
 End Sub
 
-Sub RunHealthCheckOnFolder()
+Sub RunHealthCheckOnFolderMain()
     ' Run health check on all gradebooks in a folder
     Dim folderPath As String
     Dim bimester As String
@@ -2357,7 +2357,7 @@ Sub RunHealthCheckOnFolder()
     RunHealthCheckOnFolder folderPath, bimester
 End Sub
 
-Sub RunHealthCheckOnCurrentWorkbook()
+Sub RunHealthCheckOnCurrentWorkbookMain()
     ' Run health check on the currently active workbook
     RunHealthCheckOnWorkbook ActiveWorkbook
 End Sub
