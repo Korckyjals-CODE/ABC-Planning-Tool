@@ -66,7 +66,7 @@ Public Sub RunHealthCheckOnWorkbook(ByVal wb As Workbook, Optional ByVal Suppres
     Next ws
     
     ' Initialize ProgressBar if we have sheets to process
-    Dim MyProgressbar As Object
+    Dim MyProgressbar As ProgressBar
     If totalSheets > 0 Then
         Set MyProgressbar = New ProgressBar
         
@@ -278,7 +278,7 @@ End Function
 ' Basic Weekly Gradebook Validation
 ' ===========================
 
-Private Sub ValidateWeeklyGradebookBasic(ByVal ws As Worksheet, Optional ByRef MyProgressbar As Object = Nothing, Optional ByVal SuppressDialogs As Boolean = False)
+Private Sub ValidateWeeklyGradebookBasic(ByVal ws As Worksheet, Optional ByRef MyProgressbar As ProgressBar = Nothing, Optional ByVal SuppressDialogs As Boolean = False)
     Dim issues As Collection
     Set issues = New Collection
     
@@ -880,7 +880,7 @@ Public Sub RunHealthCheckOnFolder(ByVal folderPath As String, Optional ByVal bim
     Next file
     
     ' Initialize ProgressBar if we have files to process
-    Dim MyProgressbar As Object
+    Dim MyProgressbar As ProgressBar
     If totalFiles > 0 Then
         Set MyProgressbar = New ProgressBar
         
