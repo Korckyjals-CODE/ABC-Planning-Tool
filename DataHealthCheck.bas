@@ -324,6 +324,22 @@ End Function
 Private Sub ReportHealthIssuesToSheet(ByVal issues As Collection, ByVal sheetName As String, ByVal workbookName As String)
     ' Create or update health report sheet with detailed results
     Dim reportWs As Worksheet
+    Dim screenUpdateState As Boolean
+    Dim calcState As XlCalculation
+    Dim eventsState As Boolean
+    
+    ' Store current Excel settings for performance optimization
+    screenUpdateState = Application.ScreenUpdating
+    calcState = Application.Calculation
+    eventsState = Application.EnableEvents
+    
+    ' Disable Excel features for faster execution
+    Application.ScreenUpdating = False
+    Application.Calculation = xlCalculationManual
+    Application.EnableEvents = False
+    
+    On Error GoTo RestoreSettings
+    
     Set reportWs = GetOrCreateHealthReportSheet
     
     ' Add new health check entry
@@ -342,6 +358,17 @@ Private Sub ReportHealthIssuesToSheet(ByVal issues As Collection, ByVal sheetNam
     
     ' Also log to immediate window
     Debug.Print "Health check complete for " & sheetName & " - " & issues.Count & " issues found"
+    
+RestoreSettings:
+    ' Restore Excel settings
+    Application.ScreenUpdating = screenUpdateState
+    Application.Calculation = calcState
+    Application.EnableEvents = eventsState
+    
+    If Err.Number <> 0 Then
+        Debug.Print "Error in ReportHealthIssuesToSheet: " & Err.Description
+        Err.Clear
+    End If
 End Sub
 
 Private Function GetOrCreateHealthReportSheet() As Worksheet
@@ -368,16 +395,33 @@ Private Function GetOrCreateHealthReportSheet() As Worksheet
 End Function
 
 Private Function GetPlanningWorkbook() As Workbook
-    ' Get the planning workbook that contains this VBA code
+    ' Get the planning workbook that contains this VBA code (optimized)
     Dim wb As Workbook
+    Dim ws As Worksheet
     
-    ' Try to find the planning workbook by looking for a characteristic sheet or name
+    ' First try: Check if ThisWorkbook has planning characteristics
+    On Error Resume Next
+    Set ws = ThisWorkbook.Worksheets("wsSchedule")
+    If Not ws Is Nothing Then
+        Set GetPlanningWorkbook = ThisWorkbook
+        On Error GoTo 0
+        Exit Function
+    End If
+    On Error GoTo 0
+    
+    ' Second try: Look for workbooks with "Planning" in the name (faster than sheet checking)
     For Each wb In Application.Workbooks
-        ' Check if this workbook contains the planning sheets (like wsSchedule, wsProjects, etc.)
+        If wb.Name Like "*Planning*" Then
+            Set GetPlanningWorkbook = wb
+            Exit Function
+        End If
+    Next wb
+    
+    ' Third try: Check for characteristic sheets (only if name search fails)
+    For Each wb In Application.Workbooks
         On Error Resume Next
-        If Not wb.Worksheets("wsSchedule") Is Nothing Or _
-           Not wb.Worksheets("wsProjects") Is Nothing Or _
-           wb.Name Like "*Planning*" Then
+        Set ws = wb.Worksheets("wsSchedule")
+        If Not ws Is Nothing Then
             Set GetPlanningWorkbook = wb
             On Error GoTo 0
             Exit Function
@@ -385,37 +429,45 @@ Private Function GetPlanningWorkbook() As Workbook
         On Error GoTo 0
     Next wb
     
-    ' If not found, fall back to ThisWorkbook (should be the planning workbook)
+    ' Fallback: Use ThisWorkbook
     Set GetPlanningWorkbook = ThisWorkbook
 End Function
 
 Private Sub SetupHealthReportSheet(ByVal ws As Worksheet)
-    ' Set up the health report sheet with headers and formatting
+    ' Set up the health report sheet with headers and formatting (optimized)
+    Dim headerData As Variant
+    Dim instructionData As Variant
+    Dim headerRange As Range
+    Dim instructionRange As Range
+    
+    ' Prepare data arrays for bulk operations
+    headerData = Array("Data Health Check Report", "Generated on: " & Format(Now, "yyyy-mm-dd hh:mm:ss"), "", "", _
+                      "Timestamp", "Workbook", "Sheet", "Status", "Issues Count", "Issue Details")
+    
+    instructionData = Array("Instructions:", "• Green status = No issues found", _
+                           "• Red status = Issues found - review details in column F", _
+                           "• Click on any row to see more details", _
+                           "• This report updates automatically with each health check")
+    
     With ws
         ' Clear any existing content
         .Cells.Clear
         
-        ' Headers
-        .Cells(1, 1).Value = "Data Health Check Report"
-        .Cells(1, 1).Font.Bold = True
-        .Cells(1, 1).Font.Size = 16
-        .Cells(1, 1).Interior.Color = RGB(68, 114, 196)
-        .Cells(1, 1).Font.Color = RGB(255, 255, 255)
+        ' Bulk write header data
+        .Range("A1:A10").Value = Application.Transpose(headerData)
         
-        ' Subtitle
-        .Cells(2, 1).Value = "Generated on: " & Format(Now, "yyyy-mm-dd hh:mm:ss")
+        ' Format main header (A1)
+        With .Cells(1, 1)
+            .Font.Bold = True
+            .Font.Size = 16
+            .Interior.Color = RGB(68, 114, 196)
+            .Font.Color = RGB(255, 255, 255)
+        End With
+        
+        ' Format subtitle (A2)
         .Cells(2, 1).Font.Italic = True
         
-        ' Column headers
-        .Cells(4, 1).Value = "Timestamp"
-        .Cells(4, 2).Value = "Workbook"
-        .Cells(4, 3).Value = "Sheet"
-        .Cells(4, 4).Value = "Status"
-        .Cells(4, 5).Value = "Issues Count"
-        .Cells(4, 6).Value = "Issue Details"
-        
-        ' Format headers
-        Dim headerRange As Range
+        ' Format column headers (A4:F4)
         Set headerRange = .Range("A4:F4")
         With headerRange
             .Font.Bold = True
@@ -424,84 +476,94 @@ Private Sub SetupHealthReportSheet(ByVal ws As Worksheet)
             .Borders(xlEdgeBottom).Weight = xlMedium
         End With
         
-        ' Set column widths
-        .Columns("A").ColumnWidth = 20
-        .Columns("B").ColumnWidth = 25
-        .Columns("C").ColumnWidth = 20
-        .Columns("D").ColumnWidth = 15
-        .Columns("E").ColumnWidth = 12
-        .Columns("F").ColumnWidth = 60
+        ' Set column widths in one operation
+        .Range("A:A").ColumnWidth = 20
+        .Range("B:B").ColumnWidth = 25
+        .Range("C:C").ColumnWidth = 20
+        .Range("D:D").ColumnWidth = 15
+        .Range("E:E").ColumnWidth = 12
+        .Range("F:F").ColumnWidth = 60
         
-        ' Freeze panes
-        .Range("A5").Select
-        ActiveWindow.FreezePanes = True
-        
-        ' Add instructions
-        .Cells(6, 1).Value = "Instructions:"
-        .Cells(6, 1).Font.Bold = True
-        .Cells(7, 1).Value = "• Green status = No issues found"
-        .Cells(8, 1).Value = "• Red status = Issues found - review details in column F"
-        .Cells(9, 1).Value = "• Click on any row to see more details"
-        .Cells(10, 1).Value = "• This report updates automatically with each health check"
+        ' Bulk write instruction data
+        .Range("A6:A10").Value = Application.Transpose(instructionData)
         
         ' Format instruction text
-        .Range("A7:A10").Font.Size = 10
-        .Range("A7:A10").Font.Color = RGB(100, 100, 100)
+        Set instructionRange = .Range("A7:A10")
+        With instructionRange
+            .Font.Size = 10
+            .Font.Color = RGB(100, 100, 100)
+        End With
+        
+        ' Freeze panes (avoid Select/Activate)
+        .Range("A5").Select
+        ActiveWindow.FreezePanes = True
     End With
 End Sub
 
 Private Sub AddHealthCheckEntry(ByVal reportWs As Worksheet, ByVal issues As Collection, ByVal sheetName As String, ByVal workbookName As String)
-    ' Add a new health check entry to the report sheet
+    ' Add a new health check entry to the report sheet (optimized)
     Dim lastRow As Long
+    Dim newRow As Long
+    Dim dataArray As Variant
+    Dim dataRange As Range
+    Dim issueDetails As String
+    Dim i As Integer
+    
     lastRow = reportWs.Cells(reportWs.Rows.Count, 1).End(xlUp).Row
     
     ' Find next available row (skip instruction rows)
     If lastRow < 10 Then lastRow = 10
     
-    Dim newRow As Long
     newRow = lastRow + 1
     
-    ' Add basic information
-    reportWs.Cells(newRow, 1).Value = Format(Now, "yyyy-mm-dd hh:mm:ss")
-    reportWs.Cells(newRow, 2).Value = workbookName
-    reportWs.Cells(newRow, 3).Value = sheetName
-    reportWs.Cells(newRow, 5).Value = issues.Count
+    ' Prepare data array for bulk write
+    ReDim dataArray(1 To 1, 1 To 6)
+    dataArray(1, 1) = Format(Now, "yyyy-mm-dd hh:mm:ss")
+    dataArray(1, 2) = workbookName
+    dataArray(1, 3) = sheetName
+    dataArray(1, 5) = issues.Count
     
-    ' Add status and formatting
+    ' Add status and issue details
     If issues.Count = 0 Then
-        reportWs.Cells(newRow, 4).Value = "✓ HEALTHY"
-        reportWs.Cells(newRow, 4).Interior.Color = RGB(198, 239, 206)
-        reportWs.Cells(newRow, 4).Font.Color = RGB(0, 100, 0)
-        reportWs.Cells(newRow, 6).Value = "No issues detected"
+        dataArray(1, 4) = "✓ HEALTHY"
+        dataArray(1, 6) = "No issues detected"
     Else
-        reportWs.Cells(newRow, 4).Value = "⚠ ISSUES"
-        reportWs.Cells(newRow, 4).Interior.Color = RGB(255, 199, 206)
-        reportWs.Cells(newRow, 4).Font.Color = RGB(156, 0, 6)
+        dataArray(1, 4) = "⚠ ISSUES"
         
-        ' Add detailed issue descriptions
-        Dim issueDetails As String
+        ' Build issue details string efficiently
         issueDetails = ""
-        Dim i As Integer
         For i = 1 To issues.Count
             issueDetails = issueDetails & i & ". " & issues(i)
             If i < issues.Count Then issueDetails = issueDetails & vbLf
         Next i
-        reportWs.Cells(newRow, 6).Value = issueDetails
-        reportWs.Cells(newRow, 6).WrapText = True
+        dataArray(1, 6) = issueDetails
     End If
     
-    ' Add borders
-    Dim dataRange As Range
+    ' Bulk write data to worksheet
     Set dataRange = reportWs.Range("A" & newRow & ":F" & newRow)
-    With dataRange.Borders
-        .LineStyle = xlContinuous
-        .Weight = xlThin
+    dataRange.Value = dataArray
+    
+    ' Apply formatting
+    With dataRange
+        ' Add borders
+        .Borders.LineStyle = xlContinuous
+        .Borders.Weight = xlThin
+        
+        ' Format status column
+        If issues.Count = 0 Then
+            .Cells(1, 4).Interior.Color = RGB(198, 239, 206)
+            .Cells(1, 4).Font.Color = RGB(0, 100, 0)
+        Else
+            .Cells(1, 4).Interior.Color = RGB(255, 199, 206)
+            .Cells(1, 4).Font.Color = RGB(156, 0, 6)
+            .Cells(1, 6).WrapText = True
+        End If
     End With
     
     ' Auto-fit row height for issue details
     reportWs.Rows(newRow).AutoFit
     
-    ' Scroll to the new entry
+    ' Scroll to the new entry (avoid Select when possible)
     reportWs.Cells(newRow, 1).Select
 End Sub
 
