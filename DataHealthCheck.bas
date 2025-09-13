@@ -29,7 +29,7 @@ Public Sub RunBasicHealthCheck()
     End If
 End Sub
 
-Public Sub RunHealthCheckOnWorkbook(ByVal wb As Workbook, Optional ByVal SuppressDialogs As Boolean = False)
+Public Sub RunHealthCheckOnWorkbook(ByVal wb As Workbook, Optional ByVal SuppressDialogs As Boolean = False, Optional ByVal ClearReport As Boolean = True)
     ' Run health check on a specific workbook (for external gradebooks)
     Dim ws As Worksheet
     Dim issuesFound As Boolean
@@ -53,8 +53,10 @@ Public Sub RunHealthCheckOnWorkbook(ByVal wb As Workbook, Optional ByVal Suppres
     
     On Error GoTo RestoreSettings
     
-    ' Clear previous entries for workbook health check runs
-    ClearPreviousHealthReportEntries
+    ' Clear previous entries only if requested (for new health check runs)
+    If ClearReport Then
+        ClearPreviousHealthReportEntries
+    End If
     
     ' Count total gradebook sheets for progress tracking
     For Each ws In wb.Worksheets
@@ -75,6 +77,19 @@ Public Sub RunHealthCheckOnWorkbook(ByVal wb As Workbook, Optional ByVal Suppres
             .EndColour = rgbGreen
             .TotalActions = totalSheets
         End With
+        
+        ' Position the subprocess progress bar below the parent (if it exists)
+        ' Set manual positioning to override the default centering
+        MyProgressbar.StartUpPosition = 0
+        
+        ' Calculate position below the parent progress bar
+        ' Parent is typically centered, so we position this one below it
+        Dim parentTop As Long
+        parentTop = Application.Top + (Application.Height / 2) - (MyProgressbar.Height / 2)
+        
+        ' Position this progress bar below the parent with a margin
+        MyProgressbar.Left = Application.Left + (Application.Width / 2) - (MyProgressbar.Width / 2)
+        MyProgressbar.Top = parentTop + MyProgressbar.Height + 20  ' 20 pixels margin below parent
         
         MyProgressbar.ShowBar
     End If
@@ -111,7 +126,7 @@ RestoreSettings:
     End If
 End Sub
 
-Public Sub RunHealthCheckOnFile(ByVal filePath As String, Optional ByVal SuppressDialogs As Boolean = False)
+Public Sub RunHealthCheckOnFile(ByVal filePath As String, Optional ByVal SuppressDialogs As Boolean = False, Optional ByVal ClearReport As Boolean = True)
     ' Run health check on a specific file path
     Dim wb As Workbook
     Dim xlApp As Object
@@ -159,7 +174,7 @@ Public Sub RunHealthCheckOnFile(ByVal filePath As String, Optional ByVal Suppres
     Next w
     
     ' Run health check
-    RunHealthCheckOnWorkbook wb, SuppressDialogs
+    RunHealthCheckOnWorkbook wb, SuppressDialogs, ClearReport
     
     ' Close workbook and Excel instance if we created it
     wb.Close SaveChanges:=False
@@ -843,7 +858,7 @@ Public Sub RunHealthCheckOnFolder(ByVal folderPath As String, Optional ByVal bim
                 processedCount = processedCount + 1
                 MyProgressbar.NextAction "Processing '" & file.Name & "'", True
                 Debug.Print "Processing: " & file.Name
-                RunHealthCheckOnFile file.Path, True  ' Suppress dialogs when called from folder processing
+                RunHealthCheckOnFile file.Path, True, False  ' Suppress dialogs and don't clear report (cumulative reporting)
             End If
         End If
     Next file
