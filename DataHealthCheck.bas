@@ -362,11 +362,11 @@ Private Sub ReportHealthIssuesToSheet(ByVal issues As Collection, ByVal sheetNam
     
     ' Show summary message
     If issues.Count = 0 Then
-        MsgBox "✓ " & sheetName & " - No health issues found!" & vbCrLf & vbCrLf & _
+        MsgBox "[OK] " & sheetName & " - No health issues found!" & vbCrLf & vbCrLf & _
                "The gradebook data appears to be healthy." & vbCrLf & vbCrLf & _
                "Check the 'HealthReport' sheet for detailed results.", vbInformation, "Health Check Complete"
     Else
-        MsgBox "⚠ " & sheetName & " - " & issues.Count & " health issue(s) found!" & vbCrLf & vbCrLf & _
+        MsgBox "[WARNING] " & sheetName & " - " & issues.Count & " health issue(s) found!" & vbCrLf & vbCrLf & _
                "Please review the 'HealthReport' sheet for detailed information." & vbCrLf & vbCrLf & _
                "You can now work with your gradebook while keeping the report open.", vbExclamation, "Health Check Complete"
     End If
@@ -548,10 +548,10 @@ Private Sub AddHealthCheckEntry(ByVal reportWs As Worksheet, ByVal issues As Col
     
     ' Add status and issue details
     If issues.Count = 0 Then
-        dataArray(1, 4) = "✓ HEALTHY"
+        dataArray(1, 4) = "[OK] HEALTHY"
         dataArray(1, 6) = "No issues detected"
     Else
-        dataArray(1, 4) = "⚠ ISSUES"
+        dataArray(1, 4) = "[WARNING] ISSUES"
         
         ' Build issue details string efficiently
         issueDetails = ""
