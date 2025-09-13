@@ -130,6 +130,10 @@ Public Sub GenerateRawGradebooks(ByVal strBimester As String)
     ' Reset for actual processing
     templatePath = Dir(strBimesterFolderURL & "\*.xlsx")
     
+    ' Clear previous health report entries before starting new run
+    ClearPreviousHealthReportEntries
+    Log logLines, "Cleared previous health report entries for new run"
+    
     ' Initialize ProgressBar
     Dim MyProgressbar As ProgressBar
     Set MyProgressbar = New ProgressBar
