@@ -66,7 +66,7 @@ Public Sub RunHealthCheckOnWorkbook(ByVal wb As Workbook, Optional ByVal Suppres
     Next ws
     
     ' Initialize ProgressBar if we have sheets to process
-    Dim MyProgressbar As ProgressBar
+    Dim MyProgressbar As Object
     If totalSheets > 0 Then
         Set MyProgressbar = New ProgressBar
         
@@ -278,7 +278,7 @@ End Function
 ' Basic Weekly Gradebook Validation
 ' ===========================
 
-Private Sub ValidateWeeklyGradebookBasic(ByVal ws As Worksheet, Optional ByRef MyProgressbar As ProgressBar = Nothing, Optional ByVal SuppressDialogs As Boolean = False)
+Private Sub ValidateWeeklyGradebookBasic(ByVal ws As Worksheet, Optional ByRef MyProgressbar As Object = Nothing, Optional ByVal SuppressDialogs As Boolean = False)
     Dim issues As Collection
     Set issues = New Collection
     
@@ -854,6 +854,7 @@ Public Sub RunHealthCheckOnFolder(ByVal folderPath As String, Optional ByVal bim
     Dim originalScreenUpdating As Boolean
     Dim originalCalculation As XlCalculation
     Dim originalEvents As Boolean
+    Dim ext As String
     
     Set fso = CreateObject("Scripting.FileSystemObject")
     
@@ -868,9 +869,10 @@ Public Sub RunHealthCheckOnFolder(ByVal folderPath As String, Optional ByVal bim
     Set folder = fso.GetFolder(folderPath)
     processedCount = 0
     
-    ' Count total .xlsx files for progress tracking
+    ' Count total .xlsx and .xlsm files for progress tracking
     For Each file In folder.Files
-        If LCase(fso.GetExtensionName(file.Name)) = "xlsx" Then
+        ext = LCase(fso.GetExtensionName(file.Name))
+        If ext = "xlsx" Or ext = "xlsm" Then
             If bimester = "" Or InStr(1, file.Name, bimester, vbTextCompare) > 0 Then
                 totalFiles = totalFiles + 1
             End If
@@ -878,7 +880,7 @@ Public Sub RunHealthCheckOnFolder(ByVal folderPath As String, Optional ByVal bim
     Next file
     
     ' Initialize ProgressBar if we have files to process
-    Dim MyProgressbar As ProgressBar
+    Dim MyProgressbar As Object
     If totalFiles > 0 Then
         Set MyProgressbar = New ProgressBar
         
@@ -935,7 +937,8 @@ Public Sub RunHealthCheckOnFolder(ByVal folderPath As String, Optional ByVal bim
     
     ' Process all files using the single hidden Excel instance
     For Each file In folder.Files
-        If LCase(fso.GetExtensionName(file.Name)) = "xlsx" Then
+        ext = LCase(fso.GetExtensionName(file.Name))
+        If ext = "xlsx" Or ext = "xlsm" Then
             If bimester = "" Or InStr(1, file.Name, bimester, vbTextCompare) > 0 Then
                 processedCount = processedCount + 1
                 If Not MyProgressbar Is Nothing Then
