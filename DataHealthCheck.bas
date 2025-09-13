@@ -3,12 +3,13 @@ Option Explicit
 
 ' ===========================
 ' Data Health Check Module
-' Milestone 1: Basic Health Check Framework
+' Milestone 1: Basic Health Check Framework + Enhanced Reporting
 ' ===========================
 
 ' Constants
 Private Const DEFAULT_GRADE_VALUE As Integer = 20
 Private Const EXPECTED_WEIGHT_SUM As Integer = 100
+Private Const HEALTH_REPORT_SHEET_NAME As String = "HealthReport"
 
 ' ===========================
 ' Main Health Check Functions
@@ -156,8 +157,8 @@ Private Sub ValidateWeeklyGradebookBasic(ByVal ws As Worksheet)
     ' Check for empty student rows with default grades
     CheckEmptyStudentRows ws, issues
     
-    ' Report results
-    ReportHealthIssues issues, ws.Name
+    ' Report results to health report sheet
+    ReportHealthIssuesToSheet issues, ws.Name, ws.Parent.Name
 End Sub
 
 Private Sub CheckDefaultGradesWithWeight(ByVal ws As Worksheet, ByRef issues As Collection)
@@ -317,30 +318,174 @@ Private Function IsEmptyStudentRow(ByVal ws As Worksheet, ByVal row As Long) As 
 End Function
 
 ' ===========================
-' Reporting Functions
+' Enhanced Reporting Functions
 ' ===========================
 
-Private Sub ReportHealthIssues(ByVal issues As Collection, ByVal sheetName As String)
-    ' Report health check results to user
+Private Sub ReportHealthIssuesToSheet(ByVal issues As Collection, ByVal sheetName As String, ByVal workbookName As String)
+    ' Create or update health report sheet with detailed results
+    Dim reportWs As Worksheet
+    Set reportWs = GetOrCreateHealthReportSheet
+    
+    ' Add new health check entry
+    AddHealthCheckEntry reportWs, issues, sheetName, workbookName
+    
+    ' Show summary message
     If issues.Count = 0 Then
         MsgBox "✓ " & sheetName & " - No health issues found!" & vbCrLf & vbCrLf & _
-               "The gradebook data appears to be healthy.", vbInformation, "Health Check Complete"
+               "The gradebook data appears to be healthy." & vbCrLf & vbCrLf & _
+               "Check the 'HealthReport' sheet for detailed results.", vbInformation, "Health Check Complete"
     Else
-        Dim message As String
-        message = "⚠ " & sheetName & " - " & issues.Count & " health issue(s) found:" & vbCrLf & vbCrLf
-        
-        Dim i As Integer
-        For i = 1 To issues.Count
-            message = message & i & ". " & issues(i) & vbCrLf
-        Next i
-        
-        message = message & vbCrLf & "Please review and correct these issues."
-        
-        MsgBox message, vbExclamation, "Health Check Complete"
+        MsgBox "⚠ " & sheetName & " - " & issues.Count & " health issue(s) found!" & vbCrLf & vbCrLf & _
+               "Please review the 'HealthReport' sheet for detailed information." & vbCrLf & vbCrLf & _
+               "You can now work with your gradebook while keeping the report open.", vbExclamation, "Health Check Complete"
     End If
     
     ' Also log to immediate window
     Debug.Print "Health check complete for " & sheetName & " - " & issues.Count & " issues found"
+End Sub
+
+Private Function GetOrCreateHealthReportSheet() As Worksheet
+    ' Get existing health report sheet or create a new one
+    Dim reportWs As Worksheet
+    
+    ' Try to get existing sheet
+    On Error Resume Next
+    Set reportWs = ActiveWorkbook.Worksheets(HEALTH_REPORT_SHEET_NAME)
+    On Error GoTo 0
+    
+    ' If sheet doesn't exist, create it
+    If reportWs Is Nothing Then
+        Set reportWs = ActiveWorkbook.Worksheets.Add
+        reportWs.Name = HEALTH_REPORT_SHEET_NAME
+        SetupHealthReportSheet reportWs
+    End If
+    
+    Set GetOrCreateHealthReportSheet = reportWs
+End Function
+
+Private Sub SetupHealthReportSheet(ByVal ws As Worksheet)
+    ' Set up the health report sheet with headers and formatting
+    With ws
+        ' Clear any existing content
+        .Cells.Clear
+        
+        ' Headers
+        .Cells(1, 1).Value = "Data Health Check Report"
+        .Cells(1, 1).Font.Bold = True
+        .Cells(1, 1).Font.Size = 16
+        .Cells(1, 1).Interior.Color = RGB(68, 114, 196)
+        .Cells(1, 1).Font.Color = RGB(255, 255, 255)
+        
+        ' Subtitle
+        .Cells(2, 1).Value = "Generated on: " & Format(Now, "yyyy-mm-dd hh:mm:ss")
+        .Cells(2, 1).Font.Italic = True
+        
+        ' Column headers
+        .Cells(4, 1).Value = "Timestamp"
+        .Cells(4, 2).Value = "Workbook"
+        .Cells(4, 3).Value = "Sheet"
+        .Cells(4, 4).Value = "Status"
+        .Cells(4, 5).Value = "Issues Count"
+        .Cells(4, 6).Value = "Issue Details"
+        
+        ' Format headers
+        Dim headerRange As Range
+        Set headerRange = .Range("A4:F4")
+        With headerRange
+            .Font.Bold = True
+            .Interior.Color = RGB(217, 225, 242)
+            .Borders(xlEdgeBottom).LineStyle = xlContinuous
+            .Borders(xlEdgeBottom).Weight = xlMedium
+        End With
+        
+        ' Set column widths
+        .Columns("A").ColumnWidth = 20
+        .Columns("B").ColumnWidth = 25
+        .Columns("C").ColumnWidth = 20
+        .Columns("D").ColumnWidth = 15
+        .Columns("E").ColumnWidth = 12
+        .Columns("F").ColumnWidth = 60
+        
+        ' Freeze panes
+        .Range("A5").Select
+        ActiveWindow.FreezePanes = True
+        
+        ' Add instructions
+        .Cells(6, 1).Value = "Instructions:"
+        .Cells(6, 1).Font.Bold = True
+        .Cells(7, 1).Value = "• Green status = No issues found"
+        .Cells(8, 1).Value = "• Red status = Issues found - review details in column F"
+        .Cells(9, 1).Value = "• Click on any row to see more details"
+        .Cells(10, 1).Value = "• This report updates automatically with each health check"
+        
+        ' Format instruction text
+        .Range("A7:A10").Font.Size = 10
+        .Range("A7:A10").Font.Color = RGB(100, 100, 100)
+    End With
+End Sub
+
+Private Sub AddHealthCheckEntry(ByVal reportWs As Worksheet, ByVal issues As Collection, ByVal sheetName As String, ByVal workbookName As String)
+    ' Add a new health check entry to the report sheet
+    Dim lastRow As Long
+    lastRow = reportWs.Cells(reportWs.Rows.Count, 1).End(xlUp).Row
+    
+    ' Find next available row (skip instruction rows)
+    If lastRow < 10 Then lastRow = 10
+    
+    Dim newRow As Long
+    newRow = lastRow + 1
+    
+    ' Add basic information
+    reportWs.Cells(newRow, 1).Value = Format(Now, "yyyy-mm-dd hh:mm:ss")
+    reportWs.Cells(newRow, 2).Value = workbookName
+    reportWs.Cells(newRow, 3).Value = sheetName
+    reportWs.Cells(newRow, 5).Value = issues.Count
+    
+    ' Add status and formatting
+    If issues.Count = 0 Then
+        reportWs.Cells(newRow, 4).Value = "✓ HEALTHY"
+        reportWs.Cells(newRow, 4).Interior.Color = RGB(198, 239, 206)
+        reportWs.Cells(newRow, 4).Font.Color = RGB(0, 100, 0)
+        reportWs.Cells(newRow, 6).Value = "No issues detected"
+    Else
+        reportWs.Cells(newRow, 4).Value = "⚠ ISSUES"
+        reportWs.Cells(newRow, 4).Interior.Color = RGB(255, 199, 206)
+        reportWs.Cells(newRow, 4).Font.Color = RGB(156, 0, 6)
+        
+        ' Add detailed issue descriptions
+        Dim issueDetails As String
+        issueDetails = ""
+        Dim i As Integer
+        For i = 1 To issues.Count
+            issueDetails = issueDetails & i & ". " & issues(i)
+            If i < issues.Count Then issueDetails = issueDetails & vbLf
+        Next i
+        reportWs.Cells(newRow, 6).Value = issueDetails
+        reportWs.Cells(newRow, 6).WrapText = True
+    End If
+    
+    ' Add borders
+    Dim dataRange As Range
+    Set dataRange = reportWs.Range("A" & newRow & ":F" & newRow)
+    With dataRange.Borders
+        .LineStyle = xlContinuous
+        .Weight = xlThin
+    End With
+    
+    ' Auto-fit row height for issue details
+    reportWs.Rows(newRow).AutoFit
+    
+    ' Scroll to the new entry
+    reportWs.Cells(newRow, 1).Select
+End Sub
+
+' ===========================
+' Legacy Reporting Functions (for backward compatibility)
+' ===========================
+
+Private Sub ReportHealthIssues(ByVal issues As Collection, ByVal sheetName As String)
+    ' Legacy function - now redirects to sheet-based reporting
+    ReportHealthIssuesToSheet issues, sheetName, ActiveWorkbook.Name
 End Sub
 
 ' ===========================
@@ -450,4 +595,42 @@ Public Sub RunHealthCheckOnFolder(ByVal folderPath As String, Optional ByVal bim
     Debug.Print "============================="
     
     MsgBox "Health check completed on " & processedCount & " files in folder: " & folderPath, vbInformation, "Health Check Complete"
+End Sub
+
+' ===========================
+' Health Report Management
+' ===========================
+
+Public Sub ClearHealthReport()
+    ' Clear the health report sheet
+    Dim reportWs As Worksheet
+    
+    On Error Resume Next
+    Set reportWs = ActiveWorkbook.Worksheets(HEALTH_REPORT_SHEET_NAME)
+    On Error GoTo 0
+    
+    If Not reportWs Is Nothing Then
+        If MsgBox("Are you sure you want to clear the health report?", vbYesNo + vbQuestion, "Clear Health Report") = vbYes Then
+            reportWs.Delete
+            MsgBox "Health report cleared.", vbInformation, "Health Report"
+        End If
+    Else
+        MsgBox "No health report found to clear.", vbInformation, "Health Report"
+    End If
+End Sub
+
+Public Sub ShowHealthReport()
+    ' Show the health report sheet
+    Dim reportWs As Worksheet
+    
+    On Error Resume Next
+    Set reportWs = ActiveWorkbook.Worksheets(HEALTH_REPORT_SHEET_NAME)
+    On Error GoTo 0
+    
+    If Not reportWs Is Nothing Then
+        reportWs.Activate
+        reportWs.Cells(1, 1).Select
+    Else
+        MsgBox "No health report found. Run a health check first.", vbInformation, "Health Report"
+    End If
 End Sub
