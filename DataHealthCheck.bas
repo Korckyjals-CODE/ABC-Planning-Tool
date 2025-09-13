@@ -92,7 +92,7 @@ Public Sub RunHealthCheckOnWorkbook(ByVal wb As Workbook)
     
     ' Complete progress bar
     If Not MyProgressbar Is Nothing Then
-        MyProgressbar.Complete 2, "Health check complete for " & wb.Name
+        MyProgressbar.Complete 1, "Health check complete for " & wb.Name
     End If
     
     If Not issuesFound Then
@@ -844,7 +844,7 @@ Public Sub RunHealthCheckOnFolder(ByVal folderPath As String, Optional ByVal bim
     
     ' Complete progress bar
     If Not MyProgressbar Is Nothing Then
-        MyProgressbar.Complete 3, "Health check complete on " & processedCount & " files"
+        MyProgressbar.Complete 1, "Health check complete on " & processedCount & " files"
     End If
     
     Debug.Print "=== Health Check Complete ==="
