@@ -2354,7 +2354,7 @@ Sub RunHealthCheckOnFolderMain()
     
     bimester = InputBox("Enter bimester to filter (optional, leave blank for all):", "Health Check Filter")
     
-    DataHealthCheck.RunHealthCheckOnFolder folderPath, bimester
+    RunHealthCheckOnFolder folderPath, bimester
 End Sub
 
 Sub RunHealthCheckOnCurrentWorkbookMain()
