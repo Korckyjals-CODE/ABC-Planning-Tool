@@ -12,6 +12,11 @@ Private Const EXPECTED_WEIGHT_SUM As Integer = 100
 Private Const HEALTH_REPORT_SHEET_NAME As String = "HealthReport"
 
 ' ===========================
+' Data Structures for Issue Tracking
+' ===========================
+' Note: Type definitions are now in HealthCheckTypes.bas module
+
+' ===========================
 ' Main Health Check Functions
 ' ===========================
 
@@ -29,8 +34,9 @@ Public Sub RunBasicHealthCheck()
     End If
 End Sub
 
-Public Sub RunHealthCheckOnWorkbook(ByVal wb As Workbook, Optional ByVal SuppressDialogs As Boolean = False, Optional ByVal ClearReport As Boolean = True)
+Public Function RunHealthCheckOnWorkbook(ByVal wb As Workbook, Optional ByVal SuppressDialogs As Boolean = False, Optional ByVal ClearReport As Boolean = True) As IssueSummary
     ' Run health check on a specific workbook (for external gradebooks)
+    ' Returns aggregated IssueSummary for the entire workbook
     Dim ws As Worksheet
     Dim issuesFound As Boolean
     Dim totalSheets As Long
@@ -38,7 +44,13 @@ Public Sub RunHealthCheckOnWorkbook(ByVal wb As Workbook, Optional ByVal Suppres
     Dim originalScreenUpdating As Boolean
     Dim originalCalculation As XlCalculation
     Dim originalEvents As Boolean
+    Dim sheetResult As IssueSummary
+    Dim workbookResult As IssueSummary
+    Dim totalIssues As Long
+    Dim allIssues As Collection
     
+    Set allIssues = New Collection
+    totalIssues = 0
     issuesFound = False
     
     ' Store original Excel settings for performance optimization
@@ -100,7 +112,17 @@ Public Sub RunHealthCheckOnWorkbook(ByVal wb As Workbook, Optional ByVal Suppres
             processedSheets = processedSheets + 1
             MyProgressbar.NextAction "Checking '" & ws.Name & "'", True
             Debug.Print "Running health check on: " & wb.Name & " - " & ws.Name
-            ValidateWeeklyGradebookBasic ws, MyProgressbar, SuppressDialogs
+            sheetResult = ValidateWeeklyGradebookBasic(ws, MyProgressbar, SuppressDialogs)
+            
+            ' Aggregate results
+            totalIssues = totalIssues + sheetResult.IssueCount
+            
+            ' Add individual issues to aggregated collection
+            Dim j As Long
+            For j = 1 To sheetResult.Issues.Count
+                allIssues.Add sheetResult.Issues(j)
+            Next j
+            
             issuesFound = True
         End If
     Next ws
@@ -114,6 +136,16 @@ Public Sub RunHealthCheckOnWorkbook(ByVal wb As Workbook, Optional ByVal Suppres
         MsgBox "No weekly gradebook sheets found in: " & wb.Name, vbInformation, "Health Check"
     End If
     
+    ' Create aggregated workbook result
+    workbookResult.FilePath = wb.FullName
+    workbookResult.FileName = wb.Name
+    workbookResult.SheetName = ""  ' Aggregated result
+    workbookResult.WorkbookName = wb.Name
+    workbookResult.IssueCount = totalIssues
+    Set workbookResult.Issues = allIssues
+    
+    RunHealthCheckOnWorkbook = workbookResult
+    
 RestoreSettings:
     ' Restore Excel settings
     Application.ScreenUpdating = originalScreenUpdating
@@ -124,18 +156,28 @@ RestoreSettings:
         Debug.Print "Error in RunHealthCheckOnWorkbook: " & Err.Description
         Err.Clear
     End If
-End Sub
+End Function
 
-Public Sub RunHealthCheckOnFile(ByVal filePath As String, Optional ByVal SuppressDialogs As Boolean = False, Optional ByVal ClearReport As Boolean = True, Optional ByVal xlApp As Object = Nothing)
+Public Function RunHealthCheckOnFile(ByVal filePath As String, Optional ByVal SuppressDialogs As Boolean = False, Optional ByVal ClearReport As Boolean = True, Optional ByVal xlApp As Object = Nothing) As IssueSummary
     ' Run health check on a specific file path
     ' If xlApp is provided, use it; otherwise create a new instance
+    ' Returns aggregated IssueSummary for the file
     Dim wb As Workbook
     Dim xlAppCreated As Boolean
     Dim originalVisibleState As Boolean
     Dim originalScreenUpdating As Boolean
     Dim originalCalculation As XlCalculation
     Dim originalEvents As Boolean
+    Dim sheetResults As Collection
+    Dim sheetResult As IssueSummary
+    Dim fileResult As IssueSummary
+    Dim fso As Object
+    Dim i As Long
+    Dim totalIssues As Long
+    Dim allIssues As Collection
     
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    Set allIssues = New Collection
     xlAppCreated = False
     
     ' Use provided Excel instance or create a new one
@@ -153,7 +195,15 @@ Public Sub RunHealthCheckOnFile(ByVal filePath As String, Optional ByVal Suppres
             If Not SuppressDialogs Then
                 MsgBox "Could not access Excel application to open file: " & filePath, vbExclamation, "Health Check"
             End If
-            Exit Sub
+            ' Return empty result
+            fileResult.FilePath = filePath
+            fileResult.FileName = fso.GetFileName(filePath)
+            fileResult.SheetName = ""
+            fileResult.WorkbookName = fso.GetBaseName(filePath)
+            fileResult.IssueCount = 0
+            Set fileResult.Issues = New Collection
+            RunHealthCheckOnFile = fileResult
+            Exit Function
         End If
     End If
     
@@ -193,7 +243,15 @@ Public Sub RunHealthCheckOnFile(ByVal filePath As String, Optional ByVal Suppres
         xlApp.DisplayAlerts = True
         On Error GoTo 0
         If xlAppCreated Then xlApp.Quit
-        Exit Sub
+        ' Return empty result
+        fileResult.FilePath = filePath
+        fileResult.FileName = fso.GetFileName(filePath)
+        fileResult.SheetName = ""
+        fileResult.WorkbookName = fso.GetBaseName(filePath)
+        fileResult.IssueCount = 0
+        Set fileResult.Issues = New Collection
+        RunHealthCheckOnFile = fileResult
+        Exit Function
     End If
     On Error GoTo 0
     
@@ -203,8 +261,20 @@ Public Sub RunHealthCheckOnFile(ByVal filePath As String, Optional ByVal Suppres
         w.Visible = False
     Next w
     
-    ' Run health check
-    RunHealthCheckOnWorkbook wb, SuppressDialogs, ClearReport
+    ' Run health check and get results
+    sheetResult = RunHealthCheckOnWorkbook(wb, SuppressDialogs, ClearReport)
+    
+    ' Use the aggregated workbook result directly
+    totalIssues = sheetResult.IssueCount
+    Set allIssues = sheetResult.Issues
+    
+    ' Create aggregated file result
+    fileResult.FilePath = filePath
+    fileResult.FileName = fso.GetFileName(filePath)
+    fileResult.SheetName = ""  ' Aggregated result, no single sheet
+    fileResult.WorkbookName = fso.GetBaseName(filePath)
+    fileResult.IssueCount = totalIssues
+    Set fileResult.Issues = allIssues
     
     ' Close workbook
     wb.Close SaveChanges:=False
@@ -221,15 +291,46 @@ Public Sub RunHealthCheckOnFile(ByVal filePath As String, Optional ByVal Suppres
     
     ' Only quit if we created the instance
     If xlAppCreated Then xlApp.Quit
-End Sub
+    
+    RunHealthCheckOnFile = fileResult
+End Function
 
 Public Sub RunHealthCheckOnSheet(ByVal ws As Worksheet)
     ' Run health check on specific worksheet
     If IsWeeklyGradebook(ws) Then
-        ValidateWeeklyGradebookBasic ws
+        Dim result As IssueSummary
+        result = ValidateWeeklyGradebookBasic(ws)
     Else
         MsgBox "Selected sheet is not a recognized weekly gradebook format.", vbExclamation, "Health Check"
     End If
+End Sub
+
+' ===========================
+' Backward Compatibility Wrappers
+' ===========================
+
+Public Sub RunHealthCheckOnWorkbookSub(ByVal wb As Workbook, Optional ByVal SuppressDialogs As Boolean = False, Optional ByVal ClearReport As Boolean = True)
+    ' Backward compatibility wrapper for RunHealthCheckOnWorkbook
+    Dim result As IssueSummary
+    result = RunHealthCheckOnWorkbook(wb, SuppressDialogs, ClearReport)
+End Sub
+
+Public Sub RunHealthCheckOnFileSub(ByVal filePath As String, Optional ByVal SuppressDialogs As Boolean = False, Optional ByVal ClearReport As Boolean = True, Optional ByVal xlApp As Object = Nothing)
+    ' Backward compatibility wrapper for RunHealthCheckOnFile
+    Dim result As IssueSummary
+    result = RunHealthCheckOnFile(filePath, SuppressDialogs, ClearReport, xlApp)
+End Sub
+
+Public Sub RunHealthCheckOnFolderSub(ByVal folderPath As String, Optional ByVal bimester As String = "", Optional ByVal SuppressDialogs As Boolean = False, Optional ByVal ClearReport As Boolean = True)
+    ' Backward compatibility wrapper for RunHealthCheckOnFolder
+    Dim result As FolderSummary
+    result = RunHealthCheckOnFolder(folderPath, bimester, SuppressDialogs, ClearReport)
+End Sub
+
+Public Sub RunHealthCheckOnBimesterSub(ByVal bimesterFolderPath As String)
+    ' Backward compatibility wrapper for RunHealthCheckOnBimester
+    Dim result As BimesterSummary
+    result = RunHealthCheckOnBimester(bimesterFolderPath)
 End Sub
 
 ' ===========================
@@ -278,9 +379,13 @@ End Function
 ' Basic Weekly Gradebook Validation
 ' ===========================
 
-Private Sub ValidateWeeklyGradebookBasic(ByVal ws As Worksheet, Optional ByRef MyProgressbar As ProgressBar = Nothing, Optional ByVal SuppressDialogs As Boolean = False)
+Private Function ValidateWeeklyGradebookBasic(ByVal ws As Worksheet, Optional ByRef MyProgressbar As ProgressBar = Nothing, Optional ByVal SuppressDialogs As Boolean = False) As IssueSummary
     Dim issues As Collection
+    Dim result As IssueSummary
+    Dim fso As Object
+    
     Set issues = New Collection
+    Set fso = CreateObject("Scripting.FileSystemObject")
     
     ' Log start of validation
     Debug.Print "Starting health check for: " & ws.Name
@@ -308,7 +413,17 @@ Private Sub ValidateWeeklyGradebookBasic(ByVal ws As Worksheet, Optional ByRef M
         MyProgressbar.StatusMessage = "Generating health report for '" & ws.Name & "'"
     End If
     ReportHealthIssuesToSheet issues, ws.Name, ws.Parent.Name, SuppressDialogs
-End Sub
+    
+    ' Create and populate IssueSummary
+    result.FilePath = ws.Parent.FullName
+    result.FileName = ws.Parent.Name
+    result.SheetName = ws.Name
+    result.WorkbookName = ws.Parent.Name
+    result.IssueCount = issues.Count
+    Set result.Issues = issues
+    
+    ValidateWeeklyGradebookBasic = result
+End Function
 
 Private Sub CheckDefaultGradesWithWeight(ByVal ws As Worksheet, ByRef issues As Collection)
     ' Check if any class has all default grades (20) but non-zero weight
@@ -841,9 +956,10 @@ Public Sub RunHealthCheckOnGeneratedGradebook(ByVal wb As Object, ByVal template
     End If
 End Sub
 
-Public Sub RunHealthCheckOnFolder(ByVal folderPath As String, Optional ByVal bimester As String = "", Optional ByVal SuppressDialogs As Boolean = False, Optional ByVal ClearReport As Boolean = True)
+Public Function RunHealthCheckOnFolder(ByVal folderPath As String, Optional ByVal bimester As String = "", Optional ByVal SuppressDialogs As Boolean = False, Optional ByVal ClearReport As Boolean = True) As FolderSummary
     ' Run health check on all gradebook files in a folder
     ' Uses a single hidden Excel instance to prevent flashing and improve performance
+    ' Returns FolderSummary with aggregated results
     Dim fso As Object
     Dim folder As Object
     Dim file As Object
@@ -855,12 +971,24 @@ Public Sub RunHealthCheckOnFolder(ByVal folderPath As String, Optional ByVal bim
     Dim originalCalculation As XlCalculation
     Dim originalEvents As Boolean
     Dim ext As String
+    Dim folderResult As FolderSummary
+    Dim fileResult As IssueSummary
+    Dim totalIssues As Long
+    Dim i As Long
     
     Set fso = CreateObject("Scripting.FileSystemObject")
+    totalIssues = 0
     
     If Not fso.FolderExists(folderPath) Then
         MsgBox "Folder not found: " & folderPath, vbExclamation, "Health Check"
-        Exit Sub
+        ' Return empty result
+        folderResult.FolderPath = folderPath
+        folderResult.FolderName = fso.GetBaseName(folderPath)
+        folderResult.TotalFiles = 0
+        folderResult.TotalIssues = 0
+        Set folderResult.FileSummaries = Nothing
+        RunHealthCheckOnFolder = folderResult
+        Exit Function
     End If
     
     ' Clear previous entries only if requested (for new health check runs)
@@ -904,7 +1032,14 @@ Public Sub RunHealthCheckOnFolder(ByVal folderPath As String, Optional ByVal bim
     If Err.Number <> 0 Then
         MsgBox "Could not create Excel instance for health check: " & Err.Description, vbExclamation, "Health Check"
         Err.Clear
-        Exit Sub
+        ' Return empty result
+        folderResult.FolderPath = folderPath
+        folderResult.FolderName = fso.GetBaseName(folderPath)
+        folderResult.TotalFiles = 0
+        folderResult.TotalIssues = 0
+        Set folderResult.FileSummaries = Nothing
+        RunHealthCheckOnFolder = folderResult
+        Exit Function
     End If
     On Error GoTo 0
     
@@ -947,7 +1082,8 @@ Public Sub RunHealthCheckOnFolder(ByVal folderPath As String, Optional ByVal bim
                     MyProgressbar.NextAction "Processing '" & file.Name & "'", True
                 End If
                 Debug.Print "Processing: " & file.Name
-                RunHealthCheckOnFile file.Path, True, False, xlApp  ' Use the shared hidden Excel instance
+                fileResult = RunHealthCheckOnFile(file.Path, True, False, xlApp)  ' Use the shared hidden Excel instance
+                totalIssues = totalIssues + fileResult.IssueCount
             End If
         End If
     Next file
@@ -972,16 +1108,26 @@ Public Sub RunHealthCheckOnFolder(ByVal folderPath As String, Optional ByVal bim
     Debug.Print "Files processed: " & processedCount
     Debug.Print "============================="
     
+    ' Create folder result
+    folderResult.FolderPath = folderPath
+    folderResult.FolderName = fso.GetBaseName(folderPath)
+    folderResult.TotalFiles = processedCount
+    folderResult.TotalIssues = totalIssues
+    Set folderResult.FileSummaries = Nothing  ' Simplified - no detailed file tracking
+    
     ' Show summary dialog only if not suppressed
     If Not SuppressDialogs Then
         MsgBox "Health check completed on " & processedCount & " files in folder: " & folderPath, vbInformation, "Health Check Complete"
     End If
-End Sub
+    
+    RunHealthCheckOnFolder = folderResult
+End Function
 
-Public Sub RunHealthCheckOnBimester(ByVal bimesterFolderPath As String)
+Public Function RunHealthCheckOnBimester(ByVal bimesterFolderPath As String) As BimesterSummary
     ' Run health check on all week subfolders in a bimester folder
     ' Each week subfolder (W01, W02, etc.) will be processed by RunHealthCheckOnFolder
     ' Uses three-level progress bars: Main (bimester) -> Folder (week) -> File (individual files)
+    ' Returns BimesterSummary with aggregated results
     Dim fso As Object
     Dim bimesterFolder As Object
     Dim weekFolder As Object
@@ -994,12 +1140,25 @@ Public Sub RunHealthCheckOnBimester(ByVal bimesterFolderPath As String)
     Dim originalEvents As Boolean
     Dim weekFolderName As String
     Dim weekFolderPath As String
+    Dim bimesterResult As BimesterSummary
+    Dim folderResult As FolderSummary
+    Dim i As Long
     
     Set fso = CreateObject("Scripting.FileSystemObject")
+    totalFiles = 0
+    totalIssues = 0
     
     If Not fso.FolderExists(bimesterFolderPath) Then
         MsgBox "Bimester folder not found: " & bimesterFolderPath, vbExclamation, "Health Check"
-        Exit Sub
+        ' Return empty result
+        bimesterResult.BimesterPath = bimesterFolderPath
+        bimesterResult.BimesterName = fso.GetBaseName(bimesterFolderPath)
+        bimesterResult.TotalFolders = 0
+        bimesterResult.TotalFiles = 0
+        bimesterResult.TotalIssues = 0
+        Set bimesterResult.FolderSummaries = Nothing
+        RunHealthCheckOnBimester = bimesterResult
+        Exit Function
     End If
     
     ' Clear previous entries for bimester health check runs
@@ -1007,8 +1166,6 @@ Public Sub RunHealthCheckOnBimester(ByVal bimesterFolderPath As String)
     
     Set bimesterFolder = fso.GetFolder(bimesterFolderPath)
     processedFolders = 0
-    totalFiles = 0
-    totalIssues = 0
     
     ' Count total week folders (WXX pattern) for progress tracking
     For Each weekFolder In bimesterFolder.SubFolders
@@ -1070,19 +1227,14 @@ Public Sub RunHealthCheckOnBimester(ByVal bimesterFolderPath As String)
             Debug.Print "Processing week folder: " & weekFolderName
             
             ' Run health check on this week folder (suppress its summary dialog and don't clear report)
-            RunHealthCheckOnFolder weekFolderPath, "", True, False  ' Suppress dialogs and don't clear report for subprocess
+            folderResult = RunHealthCheckOnFolder(weekFolderPath, "", True, False)  ' Suppress dialogs and don't clear report for subprocess
             
-            ' Count files and issues for this folder (for final summary)
-            Dim folderFileCount As Long
-            Dim folderIssueCount As Long
-            folderFileCount = CountExcelFilesInFolder(weekFolderPath)
-            folderIssueCount = CountIssuesInHealthReport(weekFolderName)
+            ' Aggregate totals
+            totalFiles = totalFiles + folderResult.TotalFiles
+            totalIssues = totalIssues + folderResult.TotalIssues
             
-            totalFiles = totalFiles + folderFileCount
-            totalIssues = totalIssues + folderIssueCount
-            
-            Debug.Print "  - Files processed: " & folderFileCount
-            Debug.Print "  - Issues found: " & folderIssueCount
+            Debug.Print "  - Files processed: " & folderResult.TotalFiles
+            Debug.Print "  - Issues found: " & folderResult.TotalIssues
         End If
     Next weekFolder
     
@@ -1096,6 +1248,14 @@ Public Sub RunHealthCheckOnBimester(ByVal bimesterFolderPath As String)
     Debug.Print "Total files processed: " & totalFiles
     Debug.Print "Total issues found: " & totalIssues
     Debug.Print "====================================="
+    
+    ' Create bimester result
+    bimesterResult.BimesterPath = bimesterFolderPath
+    bimesterResult.BimesterName = fso.GetBaseName(bimesterFolderPath)
+    bimesterResult.TotalFolders = processedFolders
+    bimesterResult.TotalFiles = totalFiles
+    bimesterResult.TotalIssues = totalIssues
+    Set bimesterResult.FolderSummaries = Nothing  ' Simplified - no detailed folder tracking
     
     ' Show final summary dialog
     Dim summaryMessage As String
@@ -1111,6 +1271,8 @@ Public Sub RunHealthCheckOnBimester(ByVal bimesterFolderPath As String)
         MsgBox summaryMessage, vbExclamation, "Health Check Complete - Issues Found"
     End If
     
+    RunHealthCheckOnBimester = bimesterResult
+    
 RestoreSettings:
     ' Restore Excel settings
     Application.ScreenUpdating = originalScreenUpdating
@@ -1121,7 +1283,7 @@ RestoreSettings:
         Debug.Print "Error in RunHealthCheckOnBimester: " & Err.Description
         Err.Clear
     End If
-End Sub
+End Function
 
 ' ===========================
 ' Helper Functions for Bimester Health Check
