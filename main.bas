@@ -2357,6 +2357,16 @@ Sub RunHealthCheckOnFolderMain()
     RunHealthCheckOnFolder folderPath, bimester
 End Sub
 
+Sub RunHealthCheckOnBimesterMain()
+    ' Run health check on all week subfolders in a bimester folder
+    Dim bimesterFolderPath As String
+    
+    bimesterFolderPath = InputBox("Enter the bimester folder path containing week subfolders (W01, W02, etc.):", "Health Check Bimester")
+    If bimesterFolderPath = "" Then Exit Sub
+    
+    RunHealthCheckOnBimester bimesterFolderPath
+End Sub
+
 Sub RunHealthCheckOnCurrentWorkbookMain()
     ' Run health check on the currently active workbook
     RunHealthCheckOnWorkbook ActiveWorkbook

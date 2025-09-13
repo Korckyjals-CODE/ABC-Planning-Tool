@@ -841,7 +841,7 @@ Public Sub RunHealthCheckOnGeneratedGradebook(ByVal wb As Object, ByVal template
     End If
 End Sub
 
-Public Sub RunHealthCheckOnFolder(ByVal folderPath As String, Optional ByVal bimester As String = "")
+Public Sub RunHealthCheckOnFolder(ByVal folderPath As String, Optional ByVal bimester As String = "", Optional ByVal SuppressDialogs As Boolean = False, Optional ByVal ClearReport As Boolean = True)
     ' Run health check on all gradebook files in a folder
     ' Uses a single hidden Excel instance to prevent flashing and improve performance
     Dim fso As Object
@@ -863,8 +863,10 @@ Public Sub RunHealthCheckOnFolder(ByVal folderPath As String, Optional ByVal bim
         Exit Sub
     End If
     
-    ' Clear previous entries for folder health check runs
-    ClearPreviousHealthReportEntries
+    ' Clear previous entries only if requested (for new health check runs)
+    If ClearReport Then
+        ClearPreviousHealthReportEntries
+    End If
     
     Set folder = fso.GetFolder(folderPath)
     processedCount = 0
@@ -970,8 +972,219 @@ Public Sub RunHealthCheckOnFolder(ByVal folderPath As String, Optional ByVal bim
     Debug.Print "Files processed: " & processedCount
     Debug.Print "============================="
     
-    MsgBox "Health check completed on " & processedCount & " files in folder: " & folderPath, vbInformation, "Health Check Complete"
+    ' Show summary dialog only if not suppressed
+    If Not SuppressDialogs Then
+        MsgBox "Health check completed on " & processedCount & " files in folder: " & folderPath, vbInformation, "Health Check Complete"
+    End If
 End Sub
+
+Public Sub RunHealthCheckOnBimester(ByVal bimesterFolderPath As String)
+    ' Run health check on all week subfolders in a bimester folder
+    ' Each week subfolder (W01, W02, etc.) will be processed by RunHealthCheckOnFolder
+    ' Uses three-level progress bars: Main (bimester) -> Folder (week) -> File (individual files)
+    Dim fso As Object
+    Dim bimesterFolder As Object
+    Dim weekFolder As Object
+    Dim processedFolders As Integer
+    Dim totalFolders As Long
+    Dim totalFiles As Long
+    Dim totalIssues As Long
+    Dim originalScreenUpdating As Boolean
+    Dim originalCalculation As XlCalculation
+    Dim originalEvents As Boolean
+    Dim weekFolderName As String
+    Dim weekFolderPath As String
+    
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    
+    If Not fso.FolderExists(bimesterFolderPath) Then
+        MsgBox "Bimester folder not found: " & bimesterFolderPath, vbExclamation, "Health Check"
+        Exit Sub
+    End If
+    
+    ' Clear previous entries for bimester health check runs
+    ClearPreviousHealthReportEntries
+    
+    Set bimesterFolder = fso.GetFolder(bimesterFolderPath)
+    processedFolders = 0
+    totalFiles = 0
+    totalIssues = 0
+    
+    ' Count total week folders (WXX pattern) for progress tracking
+    For Each weekFolder In bimesterFolder.SubFolders
+        weekFolderName = weekFolder.Name
+        If weekFolderName Like "W##" Then  ' Pattern: W followed by exactly 2 digits
+            totalFolders = totalFolders + 1
+        End If
+    Next weekFolder
+    
+    ' Store original Excel settings for performance optimization
+    originalScreenUpdating = Application.ScreenUpdating
+    originalCalculation = Application.Calculation
+    originalEvents = Application.EnableEvents
+    
+    ' Disable Excel features for faster execution
+    Application.ScreenUpdating = False
+    Application.Calculation = xlCalculationManual
+    Application.EnableEvents = False
+    
+    On Error GoTo RestoreSettings
+    
+    ' Initialize Main ProgressBar (top level - bimester)
+    Dim MainProgressbar As ProgressBar
+    If totalFolders > 0 Then
+        Set MainProgressbar = New ProgressBar
+        
+        With MainProgressbar
+            .Title = "Health Check - Bimester: " & fso.GetBaseName(bimesterFolderPath)
+            .ExcelStatusBar = True
+            .StartColour = rgbMediumSeaGreen
+            .EndColour = rgbGreen
+            .TotalActions = totalFolders
+        End With
+        
+        ' Position the main progress bar at the top
+        MainProgressbar.StartUpPosition = 0
+        MainProgressbar.Left = Application.Left + (Application.Width / 2) - (MainProgressbar.Width / 2)
+        MainProgressbar.Top = Application.Top + (Application.Height / 2) - (MainProgressbar.Height / 2) - 100  ' 100 pixels above center
+        
+        MainProgressbar.ShowBar
+    End If
+    
+    Debug.Print "=== Starting Health Check on Bimester ==="
+    Debug.Print "Bimester Folder: " & bimesterFolderPath
+    Debug.Print "Week folders to process: " & totalFolders
+    Debug.Print "========================================="
+    
+    ' Process all week folders
+    For Each weekFolder In bimesterFolder.SubFolders
+        weekFolderName = weekFolder.Name
+        weekFolderPath = weekFolder.Path
+        
+        If weekFolderName Like "W##" Then  ' Pattern: W followed by exactly 2 digits
+            processedFolders = processedFolders + 1
+            If Not MainProgressbar Is Nothing Then
+                MainProgressbar.NextAction "Processing week folder '" & weekFolderName & "'", True
+            End If
+            
+            Debug.Print "Processing week folder: " & weekFolderName
+            
+            ' Run health check on this week folder (suppress its summary dialog and don't clear report)
+            RunHealthCheckOnFolder weekFolderPath, "", True, False  ' Suppress dialogs and don't clear report for subprocess
+            
+            ' Count files and issues for this folder (for final summary)
+            Dim folderFileCount As Long
+            Dim folderIssueCount As Long
+            folderFileCount = CountExcelFilesInFolder(weekFolderPath)
+            folderIssueCount = CountIssuesInHealthReport(weekFolderName)
+            
+            totalFiles = totalFiles + folderFileCount
+            totalIssues = totalIssues + folderIssueCount
+            
+            Debug.Print "  - Files processed: " & folderFileCount
+            Debug.Print "  - Issues found: " & folderIssueCount
+        End If
+    Next weekFolder
+    
+    ' Complete main progress bar
+    If Not MainProgressbar Is Nothing Then
+        MainProgressbar.Complete 1, "Bimester health check complete"
+    End If
+    
+    Debug.Print "=== Bimester Health Check Complete ==="
+    Debug.Print "Week folders processed: " & processedFolders
+    Debug.Print "Total files processed: " & totalFiles
+    Debug.Print "Total issues found: " & totalIssues
+    Debug.Print "====================================="
+    
+    ' Show final summary dialog
+    Dim summaryMessage As String
+    summaryMessage = "Bimester Health Check Complete!" & vbCrLf & vbCrLf & _
+                    "Week folders processed: " & processedFolders & vbCrLf & _
+                    "Total files processed: " & totalFiles & vbCrLf & _
+                    "Total issues found: " & totalIssues & vbCrLf & vbCrLf & _
+                    "Check the 'HealthReport' sheet for detailed results."
+    
+    If totalIssues = 0 Then
+        MsgBox summaryMessage, vbInformation, "Health Check Complete - All Good!"
+    Else
+        MsgBox summaryMessage, vbExclamation, "Health Check Complete - Issues Found"
+    End If
+    
+RestoreSettings:
+    ' Restore Excel settings
+    Application.ScreenUpdating = originalScreenUpdating
+    Application.Calculation = originalCalculation
+    Application.EnableEvents = originalEvents
+    
+    If Err.Number <> 0 Then
+        Debug.Print "Error in RunHealthCheckOnBimester: " & Err.Description
+        Err.Clear
+    End If
+End Sub
+
+' ===========================
+' Helper Functions for Bimester Health Check
+' ===========================
+
+Private Function CountExcelFilesInFolder(ByVal folderPath As String) As Long
+    ' Count the number of Excel files (.xlsx and .xlsm) in a folder
+    Dim fso As Object
+    Dim folder As Object
+    Dim file As Object
+    Dim ext As String
+    Dim count As Long
+    
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    count = 0
+    
+    If fso.FolderExists(folderPath) Then
+        Set folder = fso.GetFolder(folderPath)
+        For Each file In folder.Files
+            ext = LCase(fso.GetExtensionName(file.Name))
+            If ext = "xlsx" Or ext = "xlsm" Then
+                count = count + 1
+            End If
+        Next file
+    End If
+    
+    CountExcelFilesInFolder = count
+End Function
+
+Private Function CountIssuesInHealthReport(ByVal weekFolderName As String) As Long
+    ' Count the number of issues found for a specific week folder in the health report
+    Dim reportWs As Worksheet
+    Dim planningWb As Workbook
+    Dim lastRow As Long
+    Dim row As Long
+    Dim count As Long
+    Dim sheetName As String
+    
+    count = 0
+    
+    ' Get the planning workbook and health report sheet
+    Set planningWb = GetPlanningWorkbook
+    On Error Resume Next
+    Set reportWs = planningWb.Worksheets(HEALTH_REPORT_SHEET_NAME)
+    On Error GoTo 0
+    
+    If Not reportWs Is Nothing Then
+        lastRow = reportWs.Cells(reportWs.Rows.Count, 1).End(xlUp).Row
+        
+        ' Count issues for this week folder (check if sheet name contains week folder name)
+        For row = 11 To lastRow  ' Data starts at row 11
+            sheetName = CStr(reportWs.Cells(row, 3).Value)  ' Sheet name is in column C
+            If InStr(1, sheetName, weekFolderName, vbTextCompare) > 0 Then
+                ' Check if this row has issues (Issues Count > 0)
+                If IsNumeric(reportWs.Cells(row, 5).Value) Then
+                    count = count + CLng(reportWs.Cells(row, 5).Value)
+                End If
+            End If
+        Next row
+    End If
+    
+    CountIssuesInHealthReport = count
+End Function
 
 ' ===========================
 ' Health Report Management
