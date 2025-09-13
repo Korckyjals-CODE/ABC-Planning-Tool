@@ -126,48 +126,78 @@ RestoreSettings:
     End If
 End Sub
 
-Public Sub RunHealthCheckOnFile(ByVal filePath As String, Optional ByVal SuppressDialogs As Boolean = False, Optional ByVal ClearReport As Boolean = True)
+Public Sub RunHealthCheckOnFile(ByVal filePath As String, Optional ByVal SuppressDialogs As Boolean = False, Optional ByVal ClearReport As Boolean = True, Optional ByVal xlApp As Object = Nothing)
     ' Run health check on a specific file path
+    ' If xlApp is provided, use it; otherwise create a new instance
     Dim wb As Workbook
-    Dim xlApp As Object
     Dim xlAppCreated As Boolean
     Dim originalVisibleState As Boolean
+    Dim originalScreenUpdating As Boolean
+    Dim originalCalculation As XlCalculation
+    Dim originalEvents As Boolean
     
-    ' Try to get existing Excel instance first
-    On Error Resume Next
-    Set xlApp = GetObject(, "Excel.Application")
-    If Err.Number <> 0 Then
-        Set xlApp = CreateObject("Excel.Application")
-        xlAppCreated = True
-        xlApp.Visible = False
+    xlAppCreated = False
+    
+    ' Use provided Excel instance or create a new one
+    If xlApp Is Nothing Then
+        ' Try to get existing Excel instance first
+        On Error Resume Next
+        Set xlApp = GetObject(, "Excel.Application")
+        If Err.Number <> 0 Then
+            Set xlApp = CreateObject("Excel.Application")
+            xlAppCreated = True
+        End If
+        On Error GoTo 0
+        
+        If xlApp Is Nothing Then
+            If Not SuppressDialogs Then
+                MsgBox "Could not access Excel application to open file: " & filePath, vbExclamation, "Health Check"
+            End If
+            Exit Sub
+        End If
     End If
+    
+    ' Store original settings and ensure Excel instance is completely hidden
+    On Error Resume Next
+    originalVisibleState = xlApp.Visible
+    originalScreenUpdating = xlApp.ScreenUpdating
+    originalCalculation = xlApp.Calculation
+    originalEvents = xlApp.EnableEvents
     On Error GoTo 0
     
-    If xlApp Is Nothing Then
-        If Not SuppressDialogs Then
-            MsgBox "Could not access Excel application to open file: " & filePath, vbExclamation, "Health Check"
-        End If
-        Exit Sub
-    End If
-    
-    ' Store original visibility state and ensure Excel instance is hidden
-    originalVisibleState = xlApp.Visible
+    ' Configure Excel instance for invisible operation with error handling
+    On Error Resume Next
     xlApp.Visible = False
+    xlApp.ScreenUpdating = False
+    ' Skip Calculation property setting to avoid runtime error
+    ' xlApp.Calculation = -4135  ' This can cause runtime error on some systems
+    xlApp.EnableEvents = False
+    xlApp.DisplayAlerts = False
+    On Error GoTo 0
     
     ' Open the workbook with hidden state
     On Error Resume Next
-    Set wb = xlApp.Workbooks.Open(filePath)
+    Set wb = xlApp.Workbooks.Open(filePath, UpdateLinks:=False, ReadOnly:=True)
     If Err.Number <> 0 Then
         If Not SuppressDialogs Then
             MsgBox "Could not open file: " & filePath & vbCrLf & "Error: " & Err.Description, vbExclamation, "Health Check"
         End If
         Err.Clear
+        ' Restore settings before cleanup
+        On Error Resume Next
+        xlApp.Visible = originalVisibleState
+        xlApp.ScreenUpdating = originalScreenUpdating
+        ' Skip Calculation property restoration since we didn't set it
+        ' xlApp.Calculation = originalCalculation
+        xlApp.EnableEvents = originalEvents
+        xlApp.DisplayAlerts = True
+        On Error GoTo 0
         If xlAppCreated Then xlApp.Quit
         Exit Sub
     End If
     On Error GoTo 0
     
-    ' Ensure workbook windows are hidden
+    ' Ensure all workbook windows are completely hidden
     Dim w As Window
     For Each w In wb.Windows
         w.Visible = False
@@ -176,8 +206,20 @@ Public Sub RunHealthCheckOnFile(ByVal filePath As String, Optional ByVal Suppres
     ' Run health check
     RunHealthCheckOnWorkbook wb, SuppressDialogs, ClearReport
     
-    ' Close workbook and Excel instance if we created it
+    ' Close workbook
     wb.Close SaveChanges:=False
+    
+    ' Restore Excel instance settings
+    On Error Resume Next
+    xlApp.Visible = originalVisibleState
+    xlApp.ScreenUpdating = originalScreenUpdating
+    ' Skip Calculation property restoration since we didn't set it
+    ' xlApp.Calculation = originalCalculation
+    xlApp.EnableEvents = originalEvents
+    xlApp.DisplayAlerts = True
+    On Error GoTo 0
+    
+    ' Only quit if we created the instance
     If xlAppCreated Then xlApp.Quit
 End Sub
 
@@ -801,11 +843,17 @@ End Sub
 
 Public Sub RunHealthCheckOnFolder(ByVal folderPath As String, Optional ByVal bimester As String = "")
     ' Run health check on all gradebook files in a folder
+    ' Uses a single hidden Excel instance to prevent flashing and improve performance
     Dim fso As Object
     Dim folder As Object
     Dim file As Object
     Dim processedCount As Integer
     Dim totalFiles As Long
+    Dim xlApp As Object
+    Dim xlAppCreated As Boolean
+    Dim originalScreenUpdating As Boolean
+    Dim originalCalculation As XlCalculation
+    Dim originalEvents As Boolean
     
     Set fso = CreateObject("Scripting.FileSystemObject")
     
@@ -846,19 +894,55 @@ Public Sub RunHealthCheckOnFolder(ByVal folderPath As String, Optional ByVal bim
         MyProgressbar.ShowBar
     End If
     
+    ' Create a single hidden Excel instance for all file processing
+    On Error Resume Next
+    Set xlApp = CreateObject("Excel.Application")
+    If Err.Number <> 0 Then
+        MsgBox "Could not create Excel instance for health check: " & Err.Description, vbExclamation, "Health Check"
+        Err.Clear
+        Exit Sub
+    End If
+    On Error GoTo 0
+    
+    xlAppCreated = True
+    
+    ' Store original Excel settings for performance optimization
+    originalScreenUpdating = Application.ScreenUpdating
+    originalCalculation = Application.Calculation
+    originalEvents = Application.EnableEvents
+    
+    ' Disable Excel features for faster execution and to prevent visibility
+    Application.ScreenUpdating = False
+    Application.Calculation = xlCalculationManual
+    Application.EnableEvents = False
+    
+    ' Configure the hidden Excel instance for optimal performance with error handling
+    On Error Resume Next
+    xlApp.Visible = False
+    xlApp.ScreenUpdating = False
+    ' Skip Calculation property setting to avoid runtime error
+    ' xlApp.Calculation = -4135  ' This can cause runtime error on some systems
+    xlApp.EnableEvents = False
+    xlApp.DisplayAlerts = False
+    On Error GoTo 0
+    
     Debug.Print "=== Starting Health Check on Folder ==="
     Debug.Print "Folder: " & folderPath
     If bimester <> "" Then Debug.Print "Bimester: " & bimester
     Debug.Print "Files to process: " & totalFiles
+    Debug.Print "Using single hidden Excel instance for all files"
     Debug.Print "======================================="
     
+    ' Process all files using the single hidden Excel instance
     For Each file In folder.Files
         If LCase(fso.GetExtensionName(file.Name)) = "xlsx" Then
             If bimester = "" Or InStr(1, file.Name, bimester, vbTextCompare) > 0 Then
                 processedCount = processedCount + 1
-                MyProgressbar.NextAction "Processing '" & file.Name & "'", True
+                If Not MyProgressbar Is Nothing Then
+                    MyProgressbar.NextAction "Processing '" & file.Name & "'", True
+                End If
                 Debug.Print "Processing: " & file.Name
-                RunHealthCheckOnFile file.Path, True, False  ' Suppress dialogs and don't clear report (cumulative reporting)
+                RunHealthCheckOnFile file.Path, True, False, xlApp  ' Use the shared hidden Excel instance
             End If
         End If
     Next file
@@ -867,6 +951,17 @@ Public Sub RunHealthCheckOnFolder(ByVal folderPath As String, Optional ByVal bim
     If Not MyProgressbar Is Nothing Then
         MyProgressbar.Complete 1, "Health check complete on " & processedCount & " files"
     End If
+    
+    ' Clean up the hidden Excel instance
+    If Not xlApp Is Nothing Then
+        xlApp.Quit
+        Set xlApp = Nothing
+    End If
+    
+    ' Restore original Excel settings
+    Application.ScreenUpdating = originalScreenUpdating
+    Application.Calculation = originalCalculation
+    Application.EnableEvents = originalEvents
     
     Debug.Print "=== Health Check Complete ==="
     Debug.Print "Files processed: " & processedCount
