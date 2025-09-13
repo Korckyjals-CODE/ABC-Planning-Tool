@@ -374,6 +374,9 @@ Private Sub ReportHealthIssuesToSheet(ByVal issues As Collection, ByVal sheetNam
     ' Also log to immediate window
     Debug.Print "Health check complete for " & sheetName & " - " & issues.Count & " issues found"
     
+    ' Auto-fit columns for better readability
+    AutoFitHealthReportColumns reportWs
+    
 RestoreSettings:
     ' Restore Excel settings
     Application.ScreenUpdating = screenUpdateState
@@ -384,6 +387,24 @@ RestoreSettings:
         Debug.Print "Error in ReportHealthIssuesToSheet: " & Err.Description
         Err.Clear
     End If
+End Sub
+
+Private Sub AutoFitHealthReportColumns(ByVal reportWs As Worksheet)
+    ' Auto-fit all columns in the health report for better readability
+    On Error Resume Next
+    
+    ' Auto-fit columns A through F (all data columns)
+    reportWs.Columns("A:F").AutoFit
+    
+    ' Ensure minimum column widths for better readability
+    If reportWs.Columns("A").ColumnWidth < 15 Then reportWs.Columns("A").ColumnWidth = 15
+    If reportWs.Columns("B").ColumnWidth < 20 Then reportWs.Columns("B").ColumnWidth = 20
+    If reportWs.Columns("C").ColumnWidth < 15 Then reportWs.Columns("C").ColumnWidth = 15
+    If reportWs.Columns("D").ColumnWidth < 12 Then reportWs.Columns("D").ColumnWidth = 12
+    If reportWs.Columns("E").ColumnWidth < 10 Then reportWs.Columns("E").ColumnWidth = 10
+    If reportWs.Columns("F").ColumnWidth < 30 Then reportWs.Columns("F").ColumnWidth = 30
+    
+    On Error GoTo 0
 End Sub
 
 Private Function GetOrCreateHealthReportSheet() As Worksheet
