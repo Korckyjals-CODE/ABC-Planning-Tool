@@ -233,7 +233,18 @@ Public Sub GenerateRawGradebooks(ByVal strBimester As String)
             Log logLines, "SKIP replacing formulas - template workbook not available: " & templatePath
         End If
         
-        ' 4.6) Save & close template
+        ' 4.6) Run health check on generated gradebook (optional)
+        If Not wbTemplate Is Nothing Then
+            On Error Resume Next
+            RunHealthCheckOnGeneratedGradebook wbTemplate, templatePath
+            If Err.Number <> 0 Then
+                Log logLines, "WARN: Health check failed for " & templatePath & " | " & Err.Description
+                Err.Clear
+            End If
+            On Error GoTo ErrHandler
+        End If
+        
+        ' 4.7) Save & close template
         ' Try to save/close template, but ensure we still close the support files
         Log logLines, "DEBUG: Before template close - Open workbooks count: " & Application.Workbooks.Count
         If Not wbTemplate Is Nothing Then

@@ -550,13 +550,13 @@ Select Case LCase(strGradeName)
         GradeNameToNumeric = "5"
     Case "sexto grado"
         GradeNameToNumeric = "6"
-    Case "séptimo grado"
+    Case "sï¿½ptimo grado"
         GradeNameToNumeric = "7"
     Case "octavo grado"
         GradeNameToNumeric = "8"
     Case "noveno grado"
         GradeNameToNumeric = "9"
-    Case "décimo grado"
+    Case "dï¿½cimo grado"
         GradeNameToNumeric = "10"
     Case "onceavo grado"
         GradeNameToNumeric = "11"
@@ -2309,6 +2309,57 @@ Set wordApp = New word.Application
 
 wordApp.Visible = True
 
+End Sub
+
+' ===========================
+' Health Check Integration
+' ===========================
+
+Sub RunHealthCheck()
+    ' Main entry point for health check from main module
+    RunBasicHealthCheck
+End Sub
+
+Sub TestHealthCheckMain()
+    ' Test health check functionality
+    TestHealthCheck
+End Sub
+
+Sub ShowGradebookInfoMain()
+    ' Show gradebook structure information
+    ShowGradebookInfo
+End Sub
+
+' ===========================
+' Health Check for External Files
+' ===========================
+
+Sub RunHealthCheckOnFile()
+    ' Run health check on a specific file
+    Dim filePath As String
+    filePath = InputBox("Enter the full path to the gradebook file:", "Health Check File")
+    
+    If filePath <> "" Then
+        RunHealthCheckOnFile filePath
+    End If
+End Sub
+
+Sub RunHealthCheckOnFolder()
+    ' Run health check on all gradebooks in a folder
+    Dim folderPath As String
+    Dim bimester As String
+    
+    folderPath = InputBox("Enter the folder path containing gradebook files:", "Health Check Folder")
+    If folderPath = "" Then Exit Sub
+    
+    bimester = InputBox("Enter bimester to filter (optional, leave blank for all):", "Health Check Filter")
+    
+    RunHealthCheckOnFolder folderPath, bimester
+End Sub
+
+Sub RunHealthCheckOnCurrentWorkbook()
+    ' Run health check on the currently active workbook
+    RunHealthCheckOnWorkbook ActiveWorkbook
 End Sub
 
 Function GetUnitPlanContentsText(ByVal intGradeLevel As Integer, ByVal strProjectName As String) As String
