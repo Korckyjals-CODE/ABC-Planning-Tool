@@ -549,8 +549,8 @@ Private Sub PlaceFormulaInTemplate(ByVal wb As Object, ByRef logLines As Collect
     formula = formula & "grade_rng_xlsx,INDIRECT(source_ws_xlsx&""!$H:$H""),"
     formula = formula & "name_rng_xlsm,INDIRECT(source_ws_xlsm&""!$A:$A""),"
     formula = formula & "grade_rng_xlsm,INDIRECT(source_ws_xlsm&""!$H:$H""),"
-    formula = formula & "grade,IFERROR(XLOOKUP(clean_name,name_rng_xlsx,grade_rng_xlsx,""""),XLOOKUP(clean_name,name_rng_xlsm,grade_rng_xlsm,"""")),"
-    formula = formula & "IFERROR(grade,""""))"
+    formula = formula & "grade,IFERROR(XLOOKUP(clean_name,name_rng_xlsx,grade_rng_xlsx,0),XLOOKUP(clean_name,name_rng_xlsm,grade_rng_xlsm,0)),"
+    formula = formula & "IFERROR(grade,0))"
     
     ' Place formula in C5
     On Error Resume Next
