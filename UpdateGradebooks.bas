@@ -544,8 +544,7 @@ Private Sub PlaceFormulaInTemplate(ByVal wb As Object, ByRef logLines As Collect
     formula = formula & """Twelfth Grade_A"",""12A"","
     formula = formula & """Ciclo Tres Development Center_A"",""DC3A""," 
     formula = formula & """Ciclo Tres Development Center_B"",""DC3B""," 
-    formula = formula & """Ciclo Tres Development Center_BSEC"",""DC3BSEC""," 
-    formula = formula & """Ciclo Tres Development Center_B secundaria"",""DC3BSEC"")),"
+    formula = formula & """Ciclo Tres Development Center_B secundaria"",""DC3B-SEC"")),"
     formula = formula & "grade_level_phrase,TEXTBEFORE(TEXTAFTER(CELL(""filename""),""Grades-""),""-Computers""),"
     formula = formula & "grade_level,name_to_grade_level(grade_level_phrase),"
     formula = formula & "week_number,TEXTAFTER(week_label,"" ""),"
@@ -814,15 +813,17 @@ End Function
 Private Function MapGradeTagToCode(ByVal tag As String) As String
     ' Handles:
     '  - "First Grade_A" ? "1A", "First Grade_B" ? "1B", ..., "Twelfth Grade_A/B" ? "12A/12B"
-    '  - "Ciclo Tres Development Center_A" ? "DC3A", "_B" ? "DC3B", "_BSEC" ? "DC3BSEC"
+    '  - "Ciclo Tres Development Center_A" ? "DC3A"
+    '  - "Ciclo Tres Development Center_B" ? "DC3B"
+    '  - "Ciclo Tres Development Center_B secundaria" ? "DC3B-SEC"
     
     Dim sec As String
     Dim suffix As String
     
     ' Special DC3 cases first
     If InStr(1, tag, "Ciclo Tres Development Center", vbTextCompare) = 1 Then
-        If Right$(tag, 5) = "_BSEC" Or Right$(tag, 12) = "_B secundaria" Then
-            MapGradeTagToCode = "DC3BSEC"
+        If Right$(tag, 12) = "_B secundaria" Then
+            MapGradeTagToCode = "DC3B-SEC"
             Exit Function
         End If
         
