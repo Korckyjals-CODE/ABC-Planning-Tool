@@ -13,12 +13,19 @@ Private Const FORMULA_START_CELL As String = "C5"
 ' 3) Set bimester subfolder path
 ' 4) For each template .xlsx in bimester folder:
 '    - Parse grade tag ? grade code
+'    - Filter by grade levels if provided (optional)
 '    - Open matching grade workbook(s) from each subfolder (so formulas can link to open files)
 '    - Open template (use open instance if already open)
 '    - Place grade lookup formula in C5 and copy to rectangular range (C5 : lastRow, lastCol)
 '    - Convert formulas to values in rectangular range (C5 : lastRow, lastCol) per rules
 '    - Save & close template
 '    - Close only the subfolder files we opened for this template
+'
+' Parameters:
+' - strBimester: The bimester folder name (e.g., "B1", "B2")
+' - gradeLevels: Optional. Can be a single string or array of strings containing grade levels to process.
+'   Supported grade levels: "1A", "1B", "2A", "2B", ..., "12A", "12B", "DC3A", "DC3B", "DC3BSEC"
+'   If not provided, processes all grade levels found in the bimester folder.
 '
 ' Logging:
 ' - Immediate window (Debug.Print)
@@ -31,7 +38,7 @@ Private Const FORMULA_START_CELL As String = "C5"
 ' - Calculation set to Manual during run, then restored and recalculated once
 ' - ScreenUpdating/Alerts handled
 '
-Public Sub GenerateRawGradebooks(ByVal strBimester As String)
+Public Sub GenerateRawGradebooks(ByVal strBimester As String, Optional ByVal gradeLevels As Variant = Empty)
     Dim strGradebooksTempFolderURL As String
     Dim strSourceFolderURL As String
     Dim strBimesterFolderURL As String
@@ -187,6 +194,14 @@ Public Sub GenerateRawGradebooks(ByVal strBimester As String)
             GoTo NextTemplate
         End If
         
+        ' 4.2.1) Filter by grade levels if provided
+        If Not IsEmpty(gradeLevels) Then
+            If Not IsGradeLevelIncluded(strGradeLevel, gradeLevels) Then
+                Log logLines, "SKIP (grade level '" & strGradeLevel & "' not in filter list): " & templatePath
+                GoTo NextTemplate
+            End If
+        End If
+        
         Log logLines, "Processing template: " & templatePath & " | Tag='" & strGradeLevelTag & "' ? Code='" & strGradeLevel & "'"
         
         ' Update progress bar
@@ -278,10 +293,20 @@ NextTemplate:
     ' No cleanup needed - using main Application instance
     
     ' Complete progress bar
+    On Error Resume Next
     MyProgressbar.Complete
+    If Err.Number <> 0 Then
+        Log logLines, "WARN: Error completing progress bar: " & Err.Description
+        Err.Clear
+    End If
     
     ' Close progress bar after completion
+    On Error Resume Next
     MyProgressbar.Terminate
+    If Err.Number <> 0 Then
+        Log logLines, "WARN: Error terminating progress bar: " & Err.Description
+        Err.Clear
+    End If
     Set MyProgressbar = Nothing
     
     ' Flush log (while performance guards are still active)
@@ -289,9 +314,14 @@ NextTemplate:
     DumpLogToSheet logLines, "GRB_Log"
     
     ' Wrap-up - restore performance guards AFTER logging
+    On Error Resume Next
     Application.Calculation = prevCalc
     Application.EnableEvents = prevEvents
     If prevCalc <> xlCalculationManual Then Application.Calculate
+    If Err.Number <> 0 Then
+        Log logLines, "WARN: Error during calculation restore: " & Err.Description
+        Err.Clear
+    End If
     
     Application.ScreenUpdating = prevScreenUpdating
     Application.DisplayAlerts = prevDisplayAlerts
@@ -304,7 +334,13 @@ NextTemplate:
     Else
         finalMessage = finalMessage & " Check the log for details."
     End If
+    
+    On Error Resume Next
     MsgBox finalMessage, vbInformation, "Process Complete"
+    If Err.Number <> 0 Then
+        Log logLines, "WARN: Error showing completion message: " & Err.Description
+        Err.Clear
+    End If
     
     Exit Sub
 
@@ -497,8 +533,10 @@ Private Sub PlaceFormulaInTemplate(ByVal wb As Object, ByRef logLines As Collect
     formula = formula & """Tenth Grade_A"",""10A"","
     formula = formula & """Eleventh Grade_A"",""11A"","
     formula = formula & """Twelfth Grade_A"",""12A"","
-    formula = formula & """Ciclo Tres Development Center_A"",""DC3A"","
-    formula = formula & """Ciclo Tres Development Center_B"",""DC3B"")),"
+    formula = formula & """Ciclo Tres Development Center_A"",""DC3A""," 
+    formula = formula & """Ciclo Tres Development Center_B"",""DC3B""," 
+    formula = formula & """Ciclo Tres Development Center_BSEC"",""DC3BSEC""," 
+    formula = formula & """Ciclo Tres Development Center_B secundaria"",""DC3BSEC"")),"
     formula = formula & "grade_level_phrase,TEXTBEFORE(TEXTAFTER(CELL(""filename""),""Grades-""),""-Computers""),"
     formula = formula & "grade_level,name_to_grade_level(grade_level_phrase),"
     formula = formula & "week_number,TEXTAFTER(week_label,"" ""),"
@@ -735,25 +773,69 @@ Private Function GetBetween(ByVal text As String, ByVal after As String, ByVal b
     GetBetween = Mid$(text, startPos, p2 - startPos)
 End Function
 
+Private Function IsGradeLevelIncluded(ByVal gradeLevel As String, ByVal gradeLevels As Variant) As Boolean
+    ' Check if the given grade level is included in the provided list
+    ' gradeLevels can be a single string or an array of strings
+    
+    If IsEmpty(gradeLevels) Then
+        IsGradeLevelIncluded = True
+        Exit Function
+    End If
+    
+    Dim i As Long
+    If IsArray(gradeLevels) Then
+        ' Handle array of grade levels
+        For i = LBound(gradeLevels) To UBound(gradeLevels)
+            If StrComp(CStr(gradeLevels(i)), gradeLevel, vbTextCompare) = 0 Then
+                IsGradeLevelIncluded = True
+                Exit Function
+            End If
+        Next i
+    Else
+        ' Handle single grade level
+        If StrComp(CStr(gradeLevels), gradeLevel, vbTextCompare) = 0 Then
+            IsGradeLevelIncluded = True
+            Exit Function
+        End If
+    End If
+    
+    IsGradeLevelIncluded = False
+End Function
+
 Private Function MapGradeTagToCode(ByVal tag As String) As String
     ' Handles:
     '  - "First Grade_A" ? "1A", "First Grade_B" ? "1B", ..., "Twelfth Grade_A/B" ? "12A/12B"
-    '  - "Ciclo Tres Development Center_A" ? "DC3A", "_B" ? "DC3B"
+    '  - "Ciclo Tres Development Center_A" ? "DC3A", "_B" ? "DC3B", "_BSEC" ? "DC3BSEC"
+    
     Dim sec As String
+    Dim suffix As String
+    
+    ' Special DC3 cases first
+    If InStr(1, tag, "Ciclo Tres Development Center", vbTextCompare) = 1 Then
+        If Right$(tag, 5) = "_BSEC" Or Right$(tag, 12) = "_B secundaria" Then
+            MapGradeTagToCode = "DC3BSEC"
+            Exit Function
+        End If
+        
+        sec = Right$(tag, 2) ' expects "_A" or "_B"
+        If sec = "_A" Or sec = "_B" Then
+            suffix = Right$(sec, 1) ' "A" or "B"
+            MapGradeTagToCode = "DC3" & suffix
+            Exit Function
+        End If
+        
+        MapGradeTagToCode = ""
+        Exit Function
+    End If
+    
+    ' Regular grade levels
     sec = Right$(tag, 2) ' expects "_A" or "_B"
     If Not (sec = "_A" Or sec = "_B") Then
         MapGradeTagToCode = ""
         Exit Function
     End If
     
-    Dim suffix As String
     suffix = Right$(sec, 1) ' "A" or "B"
-    
-    ' Special DC3
-    If InStr(1, tag, "Ciclo Tres Development Center", vbTextCompare) = 1 Then
-        MapGradeTagToCode = "DC3" & suffix
-        Exit Function
-    End If
     
     Dim gradeWord As String
     gradeWord = Split(tag, " ")(0) ' "First", "Second", ...
@@ -857,12 +939,10 @@ Private Sub DumpLogToSheet(ByVal logLines As Collection, ByVal sheetName As Stri
         Set ws = ThisWorkbook.Worksheets.Add(after:=ThisWorkbook.Worksheets(ThisWorkbook.Worksheets.Count))
         If Err.Number <> 0 Then
             ' If we can't create the worksheet, exit the function
-            On Error GoTo 0
             Exit Sub
         End If
         ws.Name = sheetName
     End If
-    On Error GoTo 0
     
     ' Check if ws is still valid before using it
     If ws Is Nothing Then
@@ -880,6 +960,38 @@ Private Sub DumpLogToSheet(ByVal logLines As Collection, ByVal sheetName As Stri
     Next i
     
     ws.Columns("A:B").EntireColumn.AutoFit
+End Sub
+
+' ===========================
+' Test Functions for Refactored GenerateRawGradebooks
+' ===========================
+
+Public Sub TestGenerateRawGradebooksWithFiltering()
+    ' Test function to demonstrate the new grade level filtering functionality
+    ' This is for testing purposes only - remove or comment out in production
+    
+    Dim testGradeLevels As Variant
+    
+    ' Test 1: Process all grade levels (original behavior)
+    Debug.Print "=== Test 1: Process all grade levels ==="
+    ' GenerateRawGradebooks "B1"  ' Uncomment to test with actual data
+    
+    ' Test 2: Process only specific grade levels (single grade)
+    Debug.Print "=== Test 2: Process only 1A ==="
+    testGradeLevels = "1A"
+    ' GenerateRawGradebooks "B1", testGradeLevels  ' Uncomment to test with actual data
+    
+    ' Test 3: Process multiple grade levels (array)
+    Debug.Print "=== Test 3: Process 1A, 2B, and DC3A ==="
+    testGradeLevels = Array("1A", "2B", "DC3A")
+    ' GenerateRawGradebooks "B1", testGradeLevels  ' Uncomment to test with actual data
+    
+    ' Test 4: Process DC3 special grade levels
+    Debug.Print "=== Test 4: Process DC3 grade levels ==="
+    testGradeLevels = Array("DC3A", "DC3B", "DC3BSEC")
+    ' GenerateRawGradebooks "B1", testGradeLevels  ' Uncomment to test with actual data
+    
+    Debug.Print "Test functions completed. Uncomment the actual function calls to test with real data."
 End Sub
 
 
