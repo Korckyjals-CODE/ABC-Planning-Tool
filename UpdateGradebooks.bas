@@ -88,9 +88,7 @@ Public Sub GenerateRawGradebooks(ByVal strBimester As String)
     Dim prevEvents As Boolean
     Dim booEnablePerformanceGuards As Boolean
     
-    ' New invisible Excel instance for opening files
-    Dim xlApp As Object
-    Dim xlAppCreated As Boolean
+    ' Using main Application instance for all operations
     
     ' Global tracking for all opened workbooks (for error cleanup)
     Dim globalOpenedWorkbooks As Collection
@@ -117,23 +115,8 @@ Public Sub GenerateRawGradebooks(ByVal strBimester As String)
         Application.EnableEvents = False
     End If
     
-    ' Create invisible Excel instance for opening files
-    On Error Resume Next
-    Set xlApp = CreateObject("Excel.Application")
-    If Err.Number = 0 Then
-        xlAppCreated = True
-        xlApp.Visible = False
-        xlApp.ScreenUpdating = False
-        xlApp.DisplayAlerts = False
-        xlApp.Calculation = xlCalculationManual
-        xlApp.EnableEvents = False
-        Log logLines, "Created invisible Excel instance for file operations"
-    Else
-        Log logLines, "ERROR: Failed to create Excel instance - " & Err.Description
-        Err.Clear
-        xlAppCreated = False
-    End If
-    On Error GoTo ErrHandler
+    ' Using main Application instance for all file operations
+    Log logLines, "Using main Application instance for all file operations"
     
     ' 1) Empty temp folder (contents only)
     Set fso = CreateObject("Scripting.FileSystemObject")
@@ -214,28 +197,26 @@ Public Sub GenerateRawGradebooks(ByVal strBimester As String)
         ' 4.3) Open the matching grade workbook(s) from each immediate subfolder
         Dim openedRefs As Collection
         Set openedRefs = New Collection  ' Collection of paths we opened (to close later)
-        OpenMatchingFromSubfolders xlApp, xlAppCreated, strBimesterFolderURL, strGradeLevel, openedRefs, globalOpenedWorkbooks, logLines
+        OpenMatchingFromSubfolders strBimesterFolderURL, strGradeLevel, openedRefs, globalOpenedWorkbooks, logLines
         
-        ' 4.4) Open the template workbook in the invisible Excel instance
+        ' 4.4) Open the template workbook in the main Application instance
         Dim wbTemplate As Object
-        Set wbTemplate = GetOpenWorkbookByFullPathInInstance(xlApp, fullTemplatePath)
-        If wbTemplate Is Nothing And xlAppCreated Then
+        Set wbTemplate = GetOpenWorkbookByFullPath(fullTemplatePath)
+        If wbTemplate Is Nothing Then
             ' Use watchdog approach to handle COM object timing issues
-            Set wbTemplate = OpenWorkbookWithWatchdog(xlApp, fullTemplatePath, 10, logLines)
+            Set wbTemplate = OpenWorkbookWithWatchdog(fullTemplatePath, 10, logLines)
             If Not wbTemplate Is Nothing Then
                 ' Track template workbook globally for error cleanup
                 globalOpenedWorkbooks.Add fullTemplatePath
             End If
-        ElseIf Not wbTemplate Is Nothing Then
-            Log logLines, "Template already open in invisible instance: " & fullTemplatePath
         Else
-            Log logLines, "ERROR: Cannot open template - Excel instance not available"
+            Log logLines, "Template already open in main instance: " & fullTemplatePath
         End If
         
         ' 4.4.1) Place formula in template if successfully opened
         If Not wbTemplate Is Nothing Then
             On Error Resume Next
-            PlaceFormulaInTemplate wbTemplate, xlApp, logLines
+            PlaceFormulaInTemplate wbTemplate, logLines
             If Err.Number <> 0 Then
                 formulaErrors = formulaErrors + 1
                 Log logLines, "ERROR placing formula in template: " & templatePath & " | " & Err.Description
@@ -306,7 +287,7 @@ TemplateCloseErr:
         
 AfterTemplate:
         ' 4.7) Close only the subfolder files that were opened in step 4.3
-        CloseOpenedWorkbooks xlApp, xlAppCreated, openedRefs, globalOpenedWorkbooks, logLines
+        CloseOpenedWorkbooks openedRefs, globalOpenedWorkbooks, logLines
         
 NextTemplate:
         templatePath = Dir() ' next .xlsx
@@ -315,19 +296,7 @@ NextTemplate:
     ' Process completed successfully
     Log logLines, "SUCCESS: Process completed - all workbooks closed properly"
     
-    ' Clean up the invisible Excel instance
-    If xlAppCreated And Not xlApp Is Nothing Then
-        On Error Resume Next
-        xlApp.Quit
-        If Err.Number = 0 Then
-            Log logLines, "Closed invisible Excel instance successfully"
-        Else
-            Log logLines, "WARN: Failed to close invisible Excel instance: " & Err.Description
-            Err.Clear
-        End If
-        On Error GoTo 0
-        Set xlApp = Nothing
-    End If
+    ' No cleanup needed - using main Application instance
     
     ' Complete progress bar
     MyProgressbar.Complete
@@ -371,7 +340,7 @@ ErrHandler:
     End If
     
     ' Close all tracked workbooks before restoring settings
-    CloseAllTrackedWorkbooks xlApp, xlAppCreated, globalOpenedWorkbooks, logLines
+    CloseAllTrackedWorkbooks globalOpenedWorkbooks, logLines
     
     Log logLines, "FATAL: " & Err.Number & " - " & Err.Description
     DumpLogToImmediate logLines
@@ -508,7 +477,7 @@ Private Function GetLastWeekColumnInRow(ByVal ws As Object, ByVal rowNum As Long
     GetLastWeekColumnInRow = 0
 End Function
 
-Private Sub PlaceFormulaInTemplate(ByVal wb As Object, ByVal xlApp As Object, ByRef logLines As Collection)
+Private Sub PlaceFormulaInTemplate(ByVal wb As Object, ByRef logLines As Collection)
     ' Places the grade lookup formula in the template and copies it to the appropriate range
     
     ' Check if workbook object is valid
@@ -599,15 +568,13 @@ Private Sub PlaceFormulaInTemplate(ByVal wb As Object, ByVal xlApp As Object, By
     End If
     On Error GoTo 0
     
-    ' Clear clipboard using the correct Excel instance
-    If Not xlApp Is Nothing Then
-        On Error Resume Next
-        xlApp.CutCopyMode = False
-        On Error GoTo 0
-    End If
+    ' Clear clipboard using the main Application instance
+    On Error Resume Next
+    Application.CutCopyMode = False
+    On Error GoTo 0
 End Sub
 
-Private Sub OpenMatchingFromSubfolders(ByVal xlApp As Object, ByVal xlAppCreated As Boolean, ByVal bimesterFolder As String, ByVal gradeCode As String, _
+Private Sub OpenMatchingFromSubfolders(ByVal bimesterFolder As String, ByVal gradeCode As String, _
                                        ByRef openedRefs As Collection, ByRef globalOpenedWorkbooks As Collection, ByRef logLines As Collection)
     Dim fso As Object, folder As Object, subf As Object, fil As Object
     Set fso = CreateObject("Scripting.FileSystemObject")
@@ -626,22 +593,20 @@ Private Sub OpenMatchingFromSubfolders(ByVal xlApp As Object, ByVal xlAppCreated
                     Dim fullPath As String
                     fullPath = fil.path
 
-                    ' Open only if not already open in the invisible instance; track only ones we open now
-                    If GetOpenWorkbookByFullPathInInstance(xlApp, fullPath) Is Nothing And xlAppCreated Then
+                    ' Open only if not already open in the main instance; track only ones we open now
+                    If GetOpenWorkbookByFullPath(fullPath) Is Nothing Then
                         ' Use watchdog approach to handle COM object timing issues
                         Dim wb As Object
-                        Set wb = OpenWorkbookWithWatchdog(xlApp, fullPath, 10, logLines)
+                        Set wb = OpenWorkbookWithWatchdog(fullPath, 10, logLines)
                         If Not wb Is Nothing Then
                             openedRefs.Add fullPath
                             globalOpenedWorkbooks.Add fullPath  ' Also track globally for error cleanup
                             openedAny = True
                             Log logLines, "DEBUG: Added to openedRefs (count=" & openedRefs.Count & ") and globalOpenedWorkbooks (count=" & globalOpenedWorkbooks.Count & ")"
                         End If
-                    ElseIf Not GetOpenWorkbookByFullPathInInstance(xlApp, fullPath) Is Nothing Then
-                        ' Already open in the invisible instance: do NOT close later
-                        Log logLines, "Already open in invisible instance: " & fullPath
                     Else
-                        Log logLines, "ERROR: Cannot open - Excel instance not available: " & fullPath
+                        ' Already open in the main instance: do NOT close later
+                        Log logLines, "Already open in main instance: " & fullPath
                     End If
                 End If
             End If
@@ -653,7 +618,7 @@ Private Sub OpenMatchingFromSubfolders(ByVal xlApp As Object, ByVal xlAppCreated
     Next subf
 End Sub
 
-Private Sub CloseOpenedWorkbooks(ByVal xlApp As Object, ByVal xlAppCreated As Boolean, ByVal openedRefs As Collection, ByRef globalOpenedWorkbooks As Collection, ByRef logLines As Collection)
+Private Sub CloseOpenedWorkbooks(ByVal openedRefs As Collection, ByRef globalOpenedWorkbooks As Collection, ByRef logLines As Collection)
     Dim i As Long
     Log logLines, "DEBUG: Starting to close " & openedRefs.Count & " data files"
     For i = openedRefs.Count To 1 Step -1
@@ -661,95 +626,77 @@ Private Sub CloseOpenedWorkbooks(ByVal xlApp As Object, ByVal xlAppCreated As Bo
         p = CStr(openedRefs(i))
         Log logLines, "DEBUG: Attempting to close data file: " & p
         Dim wb As Object
-        If xlAppCreated Then
-            Set wb = GetOpenWorkbookByFullPathInInstance(xlApp, p)
-            Log logLines, "DEBUG: GetOpenWorkbookByFullPathInInstance returned: " & IIf(wb Is Nothing, "Nothing", "Workbook object")
-            If Not wb Is Nothing Then
-                Log logLines, "DEBUG: Found open workbook in invisible instance, attempting to close: " & p
-                On Error Resume Next
-                wb.Close SaveChanges:=False
-                If Err.Number = 0 Then
-                    ' Verify the workbook is actually closed
-                    Dim wbStillOpen As Object
-                    Set wbStillOpen = GetOpenWorkbookByFullPathInInstance(xlApp, p)
-                    If wbStillOpen Is Nothing Then
-                        Log logLines, "Closed in invisible instance: " & p
-                        ' Also remove from global collection since it's now closed
+        Set wb = GetOpenWorkbookByFullPath(p)
+        Log logLines, "DEBUG: GetOpenWorkbookByFullPath returned: " & IIf(wb Is Nothing, "Nothing", "Workbook object")
+        If Not wb Is Nothing Then
+            Log logLines, "DEBUG: Found open workbook in main instance, attempting to close: " & p
+            On Error Resume Next
+            wb.Close SaveChanges:=False
+            If Err.Number = 0 Then
+                ' Verify the workbook is actually closed
+                Dim wbStillOpen As Object
+                Set wbStillOpen = GetOpenWorkbookByFullPath(p)
+                If wbStillOpen Is Nothing Then
+                    Log logLines, "Closed in main instance: " & p
+                    ' Also remove from global collection since it's now closed
+                    RemoveFromGlobalCollection globalOpenedWorkbooks, p
+                Else
+                    Log logLines, "WARN: Close reported success but workbook still open in main instance: " & p
+                    ' Try more aggressive closing
+                    On Error Resume Next
+                    wbStillOpen.Close SaveChanges:=False
+                    If Err.Number = 0 Then
+                        Log logLines, "Retry close successful in main instance: " & p
                         RemoveFromGlobalCollection globalOpenedWorkbooks, p
                     Else
-                        Log logLines, "WARN: Close reported success but workbook still open in invisible instance: " & p
-                        ' Try more aggressive closing
-                        On Error Resume Next
-                        wbStillOpen.Close SaveChanges:=False
-                        If Err.Number = 0 Then
-                            Log logLines, "Retry close successful in invisible instance: " & p
-                            RemoveFromGlobalCollection globalOpenedWorkbooks, p
-                        Else
-                            Log logLines, "Retry close failed in invisible instance: " & p & " | " & Err.Description
-                            Err.Clear
-                        End If
-                        On Error GoTo 0
+                        Log logLines, "Retry close failed in main instance: " & p & " | " & Err.Description
+                        Err.Clear
                     End If
-                Else
-                    Log logLines, "ERROR closing in invisible instance: " & p & " | " & Err.Description
-                    Err.Clear
+                    On Error GoTo 0
                 End If
-                On Error GoTo 0
             Else
-                Log logLines, "DEBUG: Workbook not found in invisible instance (may already be closed): " & p
+                Log logLines, "ERROR closing in main instance: " & p & " | " & Err.Description
+                Err.Clear
             End If
+            On Error GoTo 0
         Else
-            Log logLines, "ERROR: Cannot close workbook - Excel instance not available: " & p
+            Log logLines, "DEBUG: Workbook not found in main instance (may already be closed): " & p
         End If
         openedRefs.Remove i
     Next i
     Log logLines, "DEBUG: Finished closing data files"
 End Sub
 
-Private Sub CloseAllTrackedWorkbooks(ByVal xlApp As Object, ByVal xlAppCreated As Boolean, ByVal globalOpenedWorkbooks As Collection, ByRef logLines As Collection)
+Private Sub CloseAllTrackedWorkbooks(ByVal globalOpenedWorkbooks As Collection, ByRef logLines As Collection)
     ' Close all workbooks that were opened during the process (for error cleanup)
     Dim i As Long
     For i = globalOpenedWorkbooks.Count To 1 Step -1
         Dim p As String
         p = CStr(globalOpenedWorkbooks(i))
         Dim wb As Object
-        If xlAppCreated Then
-            Set wb = GetOpenWorkbookByFullPathInInstance(xlApp, p)
-            If Not wb Is Nothing Then
-                On Error Resume Next
-                wb.Close SaveChanges:=False
-                If Err.Number = 0 Then
-                    ' Verify the workbook is actually closed
-                    Dim wbStillOpen As Object
-                    Set wbStillOpen = GetOpenWorkbookByFullPathInInstance(xlApp, p)
-                    If wbStillOpen Is Nothing Then
-                        Log logLines, "ERROR CLEANUP - Closed in invisible instance: " & p
-                    Else
-                        Log logLines, "ERROR CLEANUP - WARN: Close reported success but workbook still open in invisible instance: " & p
-                    End If
+        Set wb = GetOpenWorkbookByFullPath(p)
+        If Not wb Is Nothing Then
+            On Error Resume Next
+            wb.Close SaveChanges:=False
+            If Err.Number = 0 Then
+                ' Verify the workbook is actually closed
+                Dim wbStillOpen As Object
+                Set wbStillOpen = GetOpenWorkbookByFullPath(p)
+                If wbStillOpen Is Nothing Then
+                    Log logLines, "ERROR CLEANUP - Closed in main instance: " & p
                 Else
-                    Log logLines, "ERROR CLEANUP - Failed to close in invisible instance: " & p & " | " & Err.Description
-                    Err.Clear
+                    Log logLines, "ERROR CLEANUP - WARN: Close reported success but workbook still open in main instance: " & p
                 End If
-                On Error GoTo 0
+            Else
+                Log logLines, "ERROR CLEANUP - Failed to close in main instance: " & p & " | " & Err.Description
+                Err.Clear
             End If
+            On Error GoTo 0
         End If
         globalOpenedWorkbooks.Remove i
     Next i
     
-    ' Clean up the Excel instance
-    If xlAppCreated And Not xlApp Is Nothing Then
-        On Error Resume Next
-        xlApp.Quit
-        If Err.Number = 0 Then
-            Log logLines, "ERROR CLEANUP - Closed invisible Excel instance"
-        Else
-            Log logLines, "ERROR CLEANUP - Failed to close invisible Excel instance: " & Err.Description
-            Err.Clear
-        End If
-        On Error GoTo 0
-        Set xlApp = Nothing
-    End If
+    ' No Excel instance cleanup needed - using main Application instance
 End Sub
 
 Private Sub RemoveFromGlobalCollection(ByRef globalOpenedWorkbooks As Collection, ByVal pathToRemove As String)
@@ -1094,7 +1041,7 @@ End Sub
 ' Watchdog Functions for Timing Issues
 ' ===========================
 
-Private Function OpenWorkbookWithWatchdog(ByVal xlApp As Object, ByVal filePath As String, ByVal timeoutSeconds As Long, ByRef logLines As Collection) As Object
+Private Function OpenWorkbookWithWatchdog(ByVal filePath As String, ByVal timeoutSeconds As Long, ByRef logLines As Collection) As Object
     ' Opens a workbook with retry logic and timeout to handle COM object timing issues
     Dim startTime As Double
     Dim wb As Object
@@ -1109,7 +1056,7 @@ Private Function OpenWorkbookWithWatchdog(ByVal xlApp As Object, ByVal filePath 
         attemptCount = attemptCount + 1
         
         On Error Resume Next
-        Set wb = xlApp.Workbooks.Open(filePath)
+        Set wb = Application.Workbooks.Open(filePath)
         If Err.Number = 0 And Not wb Is Nothing Then
             ' Verify the workbook is actually accessible
             Dim testCount As Long
