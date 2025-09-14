@@ -115,8 +115,6 @@ Public Sub GenerateRawGradebooks(ByVal strBimester As String)
         Application.EnableEvents = False
     End If
     
-    ' Using main Application instance for all file operations
-    Log logLines, "Using main Application instance for all file operations"
     
     ' 1) Empty temp folder (contents only)
     Set fso = CreateObject("Scripting.FileSystemObject")
@@ -203,8 +201,7 @@ Public Sub GenerateRawGradebooks(ByVal strBimester As String)
         Dim wbTemplate As Object
         Set wbTemplate = GetOpenWorkbookByFullPath(fullTemplatePath)
         If wbTemplate Is Nothing Then
-            ' Use watchdog approach to handle COM object timing issues
-            Set wbTemplate = OpenWorkbookWithWatchdog(fullTemplatePath, 10, logLines)
+            Set wbTemplate = Application.Workbooks.Open(fullTemplatePath)
             If Not wbTemplate Is Nothing Then
                 ' Track template workbook globally for error cleanup
                 globalOpenedWorkbooks.Add fullTemplatePath
@@ -227,28 +224,13 @@ Public Sub GenerateRawGradebooks(ByVal strBimester As String)
         
         ' 4.5) Replace formulas by values in the single sheet's rectangular range
         If Not wbTemplate Is Nothing Then
-            ' More robust validation: check if workbook is still valid
             On Error Resume Next
-            Dim testCount As Long
-            testCount = wbTemplate.Worksheets.Count  ' This is safer than accessing .Name
+            ReplaceFormulasWithValues wbTemplate, logLines
             If Err.Number <> 0 Then
-                Log logLines, "WARN: Workbook object became invalid before ReplaceFormulasWithValues: " & templatePath
+                Log logLines, "ERROR replacing formulas: " & templatePath & " | " & Err.Description
                 Err.Clear
-                Set wbTemplate = Nothing
             End If
             On Error GoTo ErrHandler
-            
-            If Not wbTemplate Is Nothing Then
-                On Error Resume Next
-                ReplaceFormulasWithValues wbTemplate, logLines
-                If Err.Number <> 0 Then
-                    Log logLines, "ERROR replacing formulas: " & templatePath & " | " & Err.Description
-                    Err.Clear
-                End If
-                On Error GoTo ErrHandler
-            Else
-                Log logLines, "SKIP replacing formulas - template workbook became invalid: " & templatePath
-            End If
         Else
             Log logLines, "SKIP replacing formulas - template workbook not available: " & templatePath
         End If
@@ -265,27 +247,24 @@ Public Sub GenerateRawGradebooks(ByVal strBimester As String)
         End If
         
         ' 4.7) Save & close template
-        ' Try to save/close template, but ensure we still close the support files
-        Log logLines, "DEBUG: Before template close - Open workbooks count: " & Application.Workbooks.Count
         If Not wbTemplate Is Nothing Then
-            On Error GoTo TemplateCloseErr
-            SafeSaveAndClose wbTemplate, logLines, templatePath
+            On Error Resume Next
+            wbTemplate.Save
+            If Err.Number <> 0 Then
+                Log logLines, "ERROR saving template: " & templatePath & " | " & Err.Description
+                Err.Clear
+            End If
+            wbTemplate.Close SaveChanges:=False
+            If Err.Number <> 0 Then
+                Log logLines, "ERROR closing template: " & templatePath & " | " & Err.Description
+                Err.Clear
+            End If
+            On Error GoTo ErrHandler
             ' Remove template from global collection since it's now closed
             RemoveFromGlobalCollection globalOpenedWorkbooks, fullTemplatePath
-            Log logLines, "DEBUG: After template close - Open workbooks count: " & Application.Workbooks.Count
-            On Error GoTo ErrHandler
         Else
             Log logLines, "SKIP save/close - template workbook not available: " & templatePath
         End If
-        
-        GoTo AfterTemplate
-        
-TemplateCloseErr:
-        Log logLines, "ERROR while saving/closing template: " & templatePath & " | " & Err.Description
-        Err.Clear
-        Resume AfterTemplate
-        
-AfterTemplate:
         ' 4.7) Close only the subfolder files that were opened in step 4.3
         CloseOpenedWorkbooks openedRefs, globalOpenedWorkbooks, logLines
         
@@ -368,22 +347,11 @@ Private Sub ReplaceFormulasWithValues(ByVal wb As Object, ByRef logLines As Coll
     ' - Last column: prefer "Week ..." headers in row 3; fall back to dark/black fill
     ' - Replace only formulas in that area with their current values
     
-    ' Check if workbook object is valid
     If wb Is Nothing Then
         Log logLines, "ERROR: ReplaceFormulasWithValues called with Nothing workbook object"
         Exit Sub
     End If
     
-    ' Additional validation - check if workbook is still accessible
-    On Error Resume Next
-    Dim testCount As Long
-    testCount = wb.Worksheets.Count
-    If Err.Number <> 0 Then
-        Log logLines, "ERROR: Workbook object is no longer accessible in ReplaceFormulasWithValues"
-        Err.Clear
-        Exit Sub
-    End If
-    On Error GoTo 0
     
     Dim ws As Object  ' Late-bound Worksheet
     If wb.Worksheets.Count <> 1 Then
@@ -480,7 +448,6 @@ End Function
 Private Sub PlaceFormulaInTemplate(ByVal wb As Object, ByRef logLines As Collection)
     ' Places the grade lookup formula in the template and copies it to the appropriate range
     
-    ' Check if workbook object is valid
     If wb Is Nothing Then
         Log logLines, "ERROR: PlaceFormulaInTemplate called with Nothing workbook object"
         Exit Sub
@@ -547,11 +514,15 @@ Private Sub PlaceFormulaInTemplate(ByVal wb As Object, ByRef logLines As Collect
     formula = formula & "grade,IFERROR(XLOOKUP(clean_name,name_rng_xlsx,grade_rng_xlsx,""""),XLOOKUP(clean_name,name_rng_xlsm,grade_rng_xlsm,"""")),"
     formula = formula & "IFERROR(grade,""""))"
     
-    ' Place formula in C5 using watchdog approach
-    If Not PlaceFormulaWithWatchdog(ws, formula, 10, logLines) Then
-        Log logLines, "ERROR: Failed to place formula in " & wb.Name & " after timeout"
+    ' Place formula in C5
+    On Error Resume Next
+    ws.Range(FORMULA_START_CELL).Formula = formula
+    If Err.Number <> 0 Then
+        Log logLines, "ERROR: Failed to place formula in " & wb.Name & " | " & Err.Description
+        Err.Clear
         Exit Sub
     End If
+    On Error GoTo 0
     
     ' Copy formula to the rectangular range
     Dim rng As Object  ' Late-bound Range
@@ -595,14 +566,13 @@ Private Sub OpenMatchingFromSubfolders(ByVal bimesterFolder As String, ByVal gra
 
                     ' Open only if not already open in the main instance; track only ones we open now
                     If GetOpenWorkbookByFullPath(fullPath) Is Nothing Then
-                        ' Use watchdog approach to handle COM object timing issues
                         Dim wb As Object
-                        Set wb = OpenWorkbookWithWatchdog(fullPath, 10, logLines)
+                        Set wb = Application.Workbooks.Open(fullPath)
                         If Not wb Is Nothing Then
                             openedRefs.Add fullPath
                             globalOpenedWorkbooks.Add fullPath  ' Also track globally for error cleanup
                             openedAny = True
-                            Log logLines, "DEBUG: Added to openedRefs (count=" & openedRefs.Count & ") and globalOpenedWorkbooks (count=" & globalOpenedWorkbooks.Count & ")"
+                            Log logLines, "Added to openedRefs (count=" & openedRefs.Count & ") and globalOpenedWorkbooks (count=" & globalOpenedWorkbooks.Count & ")"
                         End If
                     Else
                         ' Already open in the main instance: do NOT close later
@@ -620,51 +590,24 @@ End Sub
 
 Private Sub CloseOpenedWorkbooks(ByVal openedRefs As Collection, ByRef globalOpenedWorkbooks As Collection, ByRef logLines As Collection)
     Dim i As Long
-    Log logLines, "DEBUG: Starting to close " & openedRefs.Count & " data files"
     For i = openedRefs.Count To 1 Step -1
         Dim p As String
         p = CStr(openedRefs(i))
-        Log logLines, "DEBUG: Attempting to close data file: " & p
         Dim wb As Object
         Set wb = GetOpenWorkbookByFullPath(p)
-        Log logLines, "DEBUG: GetOpenWorkbookByFullPath returned: " & IIf(wb Is Nothing, "Nothing", "Workbook object")
         If Not wb Is Nothing Then
-            Log logLines, "DEBUG: Found open workbook in main instance, attempting to close: " & p
             On Error Resume Next
             wb.Close SaveChanges:=False
-            If Err.Number = 0 Then
-                ' Verify the workbook is actually closed
-                Dim wbStillOpen As Object
-                Set wbStillOpen = GetOpenWorkbookByFullPath(p)
-                If wbStillOpen Is Nothing Then
-                    Log logLines, "Closed in main instance: " & p
-                    ' Also remove from global collection since it's now closed
-                    RemoveFromGlobalCollection globalOpenedWorkbooks, p
-                Else
-                    Log logLines, "WARN: Close reported success but workbook still open in main instance: " & p
-                    ' Try more aggressive closing
-                    On Error Resume Next
-                    wbStillOpen.Close SaveChanges:=False
-                    If Err.Number = 0 Then
-                        Log logLines, "Retry close successful in main instance: " & p
-                        RemoveFromGlobalCollection globalOpenedWorkbooks, p
-                    Else
-                        Log logLines, "Retry close failed in main instance: " & p & " | " & Err.Description
-                        Err.Clear
-                    End If
-                    On Error GoTo 0
-                End If
-            Else
-                Log logLines, "ERROR closing in main instance: " & p & " | " & Err.Description
+            If Err.Number <> 0 Then
+                Log logLines, "ERROR closing data file: " & p & " | " & Err.Description
                 Err.Clear
             End If
             On Error GoTo 0
-        Else
-            Log logLines, "DEBUG: Workbook not found in main instance (may already be closed): " & p
+            ' Remove from global collection since it's now closed
+            RemoveFromGlobalCollection globalOpenedWorkbooks, p
         End If
         openedRefs.Remove i
     Next i
-    Log logLines, "DEBUG: Finished closing data files"
 End Sub
 
 Private Sub CloseAllTrackedWorkbooks(ByVal globalOpenedWorkbooks As Collection, ByRef logLines As Collection)
@@ -678,25 +621,14 @@ Private Sub CloseAllTrackedWorkbooks(ByVal globalOpenedWorkbooks As Collection, 
         If Not wb Is Nothing Then
             On Error Resume Next
             wb.Close SaveChanges:=False
-            If Err.Number = 0 Then
-                ' Verify the workbook is actually closed
-                Dim wbStillOpen As Object
-                Set wbStillOpen = GetOpenWorkbookByFullPath(p)
-                If wbStillOpen Is Nothing Then
-                    Log logLines, "ERROR CLEANUP - Closed in main instance: " & p
-                Else
-                    Log logLines, "ERROR CLEANUP - WARN: Close reported success but workbook still open in main instance: " & p
-                End If
-            Else
-                Log logLines, "ERROR CLEANUP - Failed to close in main instance: " & p & " | " & Err.Description
+            If Err.Number <> 0 Then
+                Log logLines, "ERROR CLEANUP - Failed to close: " & p & " | " & Err.Description
                 Err.Clear
             End If
             On Error GoTo 0
         End If
         globalOpenedWorkbooks.Remove i
     Next i
-    
-    ' No Excel instance cleanup needed - using main Application instance
 End Sub
 
 Private Sub RemoveFromGlobalCollection(ByRef globalOpenedWorkbooks As Collection, ByVal pathToRemove As String)
@@ -710,52 +642,6 @@ Private Sub RemoveFromGlobalCollection(ByRef globalOpenedWorkbooks As Collection
     Next i
 End Sub
 
-Private Function GetOpenWorkbookByFullPathInInstance(ByVal xlApp As Object, ByVal targetPath As String) As Object
-    Dim wb As Object
-    Dim localPath As String
-    Dim sharePointPath As String
-    
-    ' Try direct match first
-    For Each wb In xlApp.Workbooks
-        On Error Resume Next
-        ' Some workbooks may not expose FullName safely; ignore errors
-        If StrComp(wb.FullName, targetPath, vbTextCompare) = 0 Then
-            Set GetOpenWorkbookByFullPathInInstance = wb
-            Exit Function
-        End If
-        On Error GoTo 0
-    Next wb
-    
-    ' If no direct match, try to convert local OneDrive path to SharePoint URL
-    If InStr(targetPath, "OneDrive - ABC BILINGUAL SCHOOL") > 0 Then
-        localPath = targetPath
-        sharePointPath = ConvertLocalPathToSharePointURL(localPath)
-        
-        For Each wb In xlApp.Workbooks
-            On Error Resume Next
-            If StrComp(wb.FullName, sharePointPath, vbTextCompare) = 0 Then
-                Set GetOpenWorkbookByFullPathInInstance = wb
-                Exit Function
-            End If
-            On Error GoTo 0
-        Next wb
-    End If
-    
-    ' If still no match, try to convert SharePoint URL to local path
-    For Each wb In xlApp.Workbooks
-        On Error Resume Next
-        If InStr(wb.FullName, "sharepoint.com") > 0 Then
-            localPath = ConvertSharePointURLToLocalPath(wb.FullName)
-            If StrComp(localPath, targetPath, vbTextCompare) = 0 Then
-                Set GetOpenWorkbookByFullPathInInstance = wb
-                Exit Function
-            End If
-        End If
-        On Error GoTo 0
-    Next wb
-    
-    Set GetOpenWorkbookByFullPathInInstance = Nothing
-End Function
 
 Private Function GetOpenWorkbookByFullPath(ByVal targetPath As String) As Workbook
     Dim wb As Workbook
@@ -804,62 +690,6 @@ Private Function GetOpenWorkbookByFullPath(ByVal targetPath As String) As Workbo
     Set GetOpenWorkbookByFullPath = Nothing
 End Function
 
-Private Function GetOpenWorkbookByFullPathWithDebug(ByVal targetPath As String, ByRef logLines As Collection) As Workbook
-    Dim wb As Workbook
-    Dim localPath As String
-    Dim sharePointPath As String
-    
-    Log logLines, "DEBUG: Looking for workbook with path: " & targetPath
-    
-    ' Try direct match first
-    For Each wb In Application.Workbooks
-        On Error Resume Next
-        ' Some workbooks may not expose FullName safely; ignore errors
-        Log logLines, "DEBUG: Checking workbook: " & wb.FullName
-        If StrComp(wb.FullName, targetPath, vbTextCompare) = 0 Then
-            Log logLines, "DEBUG: MATCH FOUND!"
-            Set GetOpenWorkbookByFullPathWithDebug = wb
-            Exit Function
-        End If
-        On Error GoTo 0
-    Next wb
-    
-    ' If no direct match, try to convert local OneDrive path to SharePoint URL
-    If InStr(targetPath, "OneDrive - ABC BILINGUAL SCHOOL") > 0 Then
-        localPath = targetPath
-        sharePointPath = ConvertLocalPathToSharePointURL(localPath)
-        Log logLines, "DEBUG: Converted to SharePoint URL: " & sharePointPath
-        
-        For Each wb In Application.Workbooks
-            On Error Resume Next
-            Log logLines, "DEBUG: Checking workbook: " & wb.FullName
-            If StrComp(wb.FullName, sharePointPath, vbTextCompare) = 0 Then
-                Log logLines, "DEBUG: MATCH FOUND with converted path!"
-                Set GetOpenWorkbookByFullPathWithDebug = wb
-                Exit Function
-            End If
-            On Error GoTo 0
-        Next wb
-    End If
-    
-    ' If still no match, try to convert SharePoint URL to local path
-    For Each wb In Application.Workbooks
-        On Error Resume Next
-        If InStr(wb.FullName, "sharepoint.com") > 0 Then
-            localPath = ConvertSharePointURLToLocalPath(wb.FullName)
-            Log logLines, "DEBUG: Converted SharePoint URL to local path: " & localPath
-            If StrComp(localPath, targetPath, vbTextCompare) = 0 Then
-                Log logLines, "DEBUG: MATCH FOUND with reverse conversion!"
-                Set GetOpenWorkbookByFullPathWithDebug = wb
-                Exit Function
-            End If
-        End If
-        On Error GoTo 0
-    Next wb
-    
-    Log logLines, "DEBUG: No match found for: " & targetPath
-    Set GetOpenWorkbookByFullPathWithDebug = Nothing
-End Function
 
 ' Helper function to convert local OneDrive path to SharePoint URL
 Private Function ConvertLocalPathToSharePointURL(ByVal localPath As String) As String
@@ -993,145 +823,8 @@ Private Function JoinPath(ByVal base As String, ByVal leaf As String) As String
     JoinPath = TrimTrailingSlash(base) & "\" & leaf
 End Function
 
-Private Sub SafeSaveAndClose(ByVal wb As Object, ByRef logLines As Collection, Optional ByVal labelName As String = "")
-    Dim i As Long
-    Dim okSave As Boolean, okClose As Boolean
-    
-    For i = 1 To 3
-        On Error Resume Next
-        Err.Clear
-        wb.Save
-        okSave = (Err.Number = 0)
-        If Not okSave Then
-            Log logLines, "WARN: Save retry " & i & " for " & IIf(Len(labelName) > 0, labelName, wb.Name) & " | " & Err.Description
-            DoEvents
-            SleepShort 300
-        Else
-            Log logLines, "DEBUG: Successfully saved: " & IIf(Len(labelName) > 0, labelName, wb.Name)
-            Exit For
-        End If
-    Next i
-    
-    For i = 1 To 3
-        On Error Resume Next
-        Err.Clear
-        wb.Close SaveChanges:=False
-        okClose = (Err.Number = 0)
-        If Not okClose Then
-            Log logLines, "WARN: Close retry " & i & " for " & IIf(Len(labelName) > 0, labelName, wb.Name) & " | " & Err.Description
-            DoEvents
-            SleepShort 300
-        Else
-            Log logLines, "DEBUG: Successfully closed: " & IIf(Len(labelName) > 0, labelName, wb.Name)
-            Exit For
-        End If
-    Next i
-    
-    On Error GoTo 0
-End Sub
 
-Private Sub SleepShort(ms As Long)
-    Dim t As Single: t = Timer
-    Do While Timer - t < ms / 1000!
-        DoEvents
-    Loop
-End Sub
 
-' ===========================
-' Watchdog Functions for Timing Issues
-' ===========================
-
-Private Function OpenWorkbookWithWatchdog(ByVal filePath As String, ByVal timeoutSeconds As Long, ByRef logLines As Collection) As Object
-    ' Opens a workbook with retry logic and timeout to handle COM object timing issues
-    Dim startTime As Double
-    Dim wb As Object
-    Dim success As Boolean
-    Dim attemptCount As Long
-    
-    startTime = Timer
-    success = False
-    attemptCount = 0
-    
-    Do While (Timer - startTime) < timeoutSeconds
-        attemptCount = attemptCount + 1
-        
-        On Error Resume Next
-        Set wb = Application.Workbooks.Open(filePath)
-        If Err.Number = 0 And Not wb Is Nothing Then
-            ' Verify the workbook is actually accessible
-            Dim testCount As Long
-            testCount = wb.Worksheets.Count
-            If Err.Number = 0 Then
-                success = True
-                Log logLines, "SUCCESS: Opened workbook (attempt " & attemptCount & "): " & filePath
-                Exit Do
-            Else
-                Log logLines, "WARN: Workbook opened but not accessible (attempt " & attemptCount & "): " & filePath
-                Err.Clear
-                If Not wb Is Nothing Then
-                    wb.Close SaveChanges:=False
-                    Set wb = Nothing
-                End If
-            End If
-        Else
-            If attemptCount = 1 Then
-                Log logLines, "WARN: Failed to open workbook (attempt " & attemptCount & "): " & filePath & " | " & Err.Description
-            End If
-            Err.Clear
-        End If
-        On Error GoTo 0
-        
-        ' Small delay before retry
-        DoEvents
-        SleepShort 50
-    Loop
-    
-    If success Then
-        Set OpenWorkbookWithWatchdog = wb
-    Else
-        Log logLines, "ERROR: Failed to open workbook after " & attemptCount & " attempts in " & Format$(Timer - startTime, "0.0") & " seconds: " & filePath
-        Set OpenWorkbookWithWatchdog = Nothing
-    End If
-End Function
-
-Private Function PlaceFormulaWithWatchdog(ByVal ws As Object, ByVal formula As String, ByVal timeoutSeconds As Long, ByRef logLines As Collection) As Boolean
-    ' Places a formula with retry logic and timeout to handle worksheet timing issues
-    Dim startTime As Double
-    Dim success As Boolean
-    Dim attemptCount As Long
-    
-    startTime = Timer
-    success = False
-    attemptCount = 0
-    
-    Do While (Timer - startTime) < timeoutSeconds
-        attemptCount = attemptCount + 1
-        
-        On Error Resume Next
-        ws.Range(FORMULA_START_CELL).Formula = formula
-        If Err.Number = 0 Then
-            success = True
-            Log logLines, "SUCCESS: Placed formula (attempt " & attemptCount & ") in " & ws.Parent.Name
-            Exit Do
-        Else
-            If attemptCount = 1 Then
-                Log logLines, "WARN: Failed to place formula (attempt " & attemptCount & ") in " & ws.Parent.Name & " | " & Err.Description
-            End If
-            Err.Clear
-        End If
-        On Error GoTo 0
-        
-        ' Small delay before retry
-        DoEvents
-        SleepShort 50
-    Loop
-    
-    If Not success Then
-        Log logLines, "ERROR: Failed to place formula after " & attemptCount & " attempts in " & Format$(Timer - startTime, "0.0") & " seconds in " & ws.Parent.Name
-    End If
-    
-    PlaceFormulaWithWatchdog = success
-End Function
 
 ' ===========================
 ' Logging
@@ -1162,9 +855,19 @@ Private Sub DumpLogToSheet(ByVal logLines As Collection, ByVal sheetName As Stri
         ws.Cells.Clear
     Else
         Set ws = ThisWorkbook.Worksheets.Add(after:=ThisWorkbook.Worksheets(ThisWorkbook.Worksheets.Count))
+        If Err.Number <> 0 Then
+            ' If we can't create the worksheet, exit the function
+            On Error GoTo 0
+            Exit Sub
+        End If
         ws.Name = sheetName
     End If
     On Error GoTo 0
+    
+    ' Check if ws is still valid before using it
+    If ws Is Nothing Then
+        Exit Sub
+    End If
     
     ws.Range("A1").value = "Timestamp"
     ws.Range("B1").value = "Message"
