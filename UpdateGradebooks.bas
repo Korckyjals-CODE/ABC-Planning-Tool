@@ -416,6 +416,12 @@ Private Sub ReplaceFormulasWithValues(ByVal wb As Object, ByRef logLines As Coll
     Dim rng As Object  ' Late-bound Range
     Set rng = ws.Range(ws.Cells(5, 3), ws.Cells(lastRow, lastCol)) ' C5 : lastRow,lastCol
     
+    ' Temporarily enable calculation to ensure formulas are calculated before replacement
+    Dim tempCalc As XlCalculation
+    tempCalc = Application.Calculation
+    Application.Calculation = xlCalculationAutomatic
+    Application.Calculate  ' Ensure all formulas are calculated
+    
     ' Replace formulas with values
     Dim cell As Object  ' Late-bound Range
     Dim cnt As Long
@@ -425,6 +431,9 @@ Private Sub ReplaceFormulasWithValues(ByVal wb As Object, ByRef logLines As Coll
             cnt = cnt + 1
         End If
     Next cell
+    
+    ' Restore original calculation mode
+    Application.Calculation = tempCalc
     
     Log logLines, "Replaced " & cnt & " formulas with values in " & wb.Name & " | Range=" & rng.Address(External:=False)
 End Sub
