@@ -15,7 +15,7 @@ Private Const FORMULA_START_CELL As String = "C5"
 '    - Parse grade tag ? grade code
 '    - Open matching grade workbook(s) from each subfolder (so formulas can link to open files)
 '    - Open template (use open instance if already open)
-'    - Place grade lookup formula in C5 and copy to rectangular range (C5 : lastRow, lastCol)
+'    - Place grade lookup formula in rectangular range (C5 : lastRow, lastCol) using R1C1 notation
 '    - Convert formulas to values in rectangular range (C5 : lastRow, lastCol) per rules
 '    - Save & close template
 '    - Close only the subfolder files we opened for this template
@@ -537,74 +537,58 @@ Private Sub PlaceFormulaInTemplate(ByVal wb As Object, ByVal xlApp As Object, By
         Exit Sub
     End If
     
-    ' Define the formula by building it in parts to avoid line continuation limit
-    Dim formula As String
-    formula = "=LET("
-    formula = formula & "name,$B5,"
-    formula = formula & "week_label,C$3,"
-    formula = formula & "name_to_grade_level,LAMBDA(grade_string,SWITCH(grade_string,"
-    formula = formula & """First Grade_A"",""1A"","
-    formula = formula & """First Grade_B"",""1B"","
-    formula = formula & """Second Grade_A"",""2A"","
-    formula = formula & """Second Grade_B"",""2B"","
-    formula = formula & """Third Grade_A"",""3A"","
-    formula = formula & """Third Grade_B"",""3B"","
-    formula = formula & """Fourth Grade_A"",""4A"","
-    formula = formula & """Fourth Grade_B"",""4B"","
-    formula = formula & """Fifth Grade_A"",""5A"","
-    formula = formula & """Fifth Grade_B"",""5B"","
-    formula = formula & """Sixth Grade_A"",""6A"","
-    formula = formula & """Sixth Grade_B"",""6B"","
-    formula = formula & """Seventh Grade_A"",""7A"","
-    formula = formula & """Eighth Grade_A"",""8A"","
-    formula = formula & """Ninth Grade_A"",""9A"","
-    formula = formula & """Tenth Grade_A"",""10A"","
-    formula = formula & """Eleventh Grade_A"",""11A"","
-    formula = formula & """Twelfth Grade_A"",""12A"","
-    formula = formula & """Ciclo Tres Development Center_A"",""DC3A"","
-    formula = formula & """Ciclo Tres Development Center_B"",""DC3B"")),"
-    formula = formula & "grade_level_phrase,TEXTBEFORE(TEXTAFTER(CELL(""filename""),""Grades-""),""-Computers""),"
-    formula = formula & "grade_level,name_to_grade_level(grade_level_phrase),"
-    formula = formula & "week_number,TEXTAFTER(week_label,"" ""),"
-    formula = formula & "fixed_week_number,IF(LEN(week_number)=2,"""",""0"")&week_number,"
-    formula = formula & "parsed_name,TEXTAFTER(name,""- ""),"
-    formula = formula & "clean_name,TRIM(SUBSTITUTE(parsed_name,"" ,"","","")),"
-    formula = formula & "source_ws_xlsx,""'[Weekly Grade - W""&fixed_week_number&"" - ""&grade_level&"" - 2526.xlsx]Nota Semanal'"","
-    formula = formula & "source_ws_xlsm,""'[Weekly Grade - W""&fixed_week_number&"" - ""&grade_level&"" - 2526.xlsm]Nota Semanal'"","
-    formula = formula & "name_rng_xlsx,INDIRECT(source_ws_xlsx&""!$A:$A""),"
-    formula = formula & "grade_rng_xlsx,INDIRECT(source_ws_xlsx&""!$H:$H""),"
-    formula = formula & "name_rng_xlsm,INDIRECT(source_ws_xlsm&""!$A:$A""),"
-    formula = formula & "grade_rng_xlsm,INDIRECT(source_ws_xlsm&""!$H:$H""),"
-    formula = formula & "grade,IFERROR(XLOOKUP(clean_name,name_rng_xlsx,grade_rng_xlsx,""""),XLOOKUP(clean_name,name_rng_xlsm,grade_rng_xlsm,"""")),"
-    formula = formula & "IFERROR(grade,""""))"
+    ' Build the formula in R1C1 notation for range assignment
+    Dim r1c1Formula As String
+    r1c1Formula = "=LET("
+    r1c1Formula = r1c1Formula & "name,RC2,"  ' Absolute column 2 (B), current row - matches $B5
+    r1c1Formula = r1c1Formula & "week_label,R3C,"  ' Absolute row 3, current column - matches C$3
+    r1c1Formula = r1c1Formula & "name_to_grade_level,LAMBDA(grade_string,SWITCH(grade_string,"
+    r1c1Formula = r1c1Formula & """First Grade_A"",""1A"","
+    r1c1Formula = r1c1Formula & """First Grade_B"",""1B"","
+    r1c1Formula = r1c1Formula & """Second Grade_A"",""2A"","
+    r1c1Formula = r1c1Formula & """Second Grade_B"",""2B"","
+    r1c1Formula = r1c1Formula & """Third Grade_A"",""3A"","
+    r1c1Formula = r1c1Formula & """Third Grade_B"",""3B"","
+    r1c1Formula = r1c1Formula & """Fourth Grade_A"",""4A"","
+    r1c1Formula = r1c1Formula & """Fourth Grade_B"",""4B"","
+    r1c1Formula = r1c1Formula & """Fifth Grade_A"",""5A"","
+    r1c1Formula = r1c1Formula & """Fifth Grade_B"",""5B"","
+    r1c1Formula = r1c1Formula & """Sixth Grade_A"",""6A"","
+    r1c1Formula = r1c1Formula & """Sixth Grade_B"",""6B"","
+    r1c1Formula = r1c1Formula & """Seventh Grade_A"",""7A"","
+    r1c1Formula = r1c1Formula & """Eighth Grade_A"",""8A"","
+    r1c1Formula = r1c1Formula & """Ninth Grade_A"",""9A"","
+    r1c1Formula = r1c1Formula & """Tenth Grade_A"",""10A"","
+    r1c1Formula = r1c1Formula & """Eleventh Grade_A"",""11A"","
+    r1c1Formula = r1c1Formula & """Twelfth Grade_A"",""12A"","
+    r1c1Formula = r1c1Formula & """Ciclo Tres Development Center_A"",""DC3A"","
+    r1c1Formula = r1c1Formula & """Ciclo Tres Development Center_B"",""DC3B"")),"
+    r1c1Formula = r1c1Formula & "grade_level_phrase,TEXTBEFORE(TEXTAFTER(CELL(""filename""),""Grades-""),""-Computers""),"
+    r1c1Formula = r1c1Formula & "grade_level,name_to_grade_level(grade_level_phrase),"
+    r1c1Formula = r1c1Formula & "week_number,TEXTAFTER(week_label,"" ""),"
+    r1c1Formula = r1c1Formula & "fixed_week_number,IF(LEN(week_number)=2,"""",""0"")&week_number,"
+    r1c1Formula = r1c1Formula & "parsed_name,TEXTAFTER(name,""- ""),"
+    r1c1Formula = r1c1Formula & "clean_name,TRIM(SUBSTITUTE(parsed_name,"" ,"","","")),"
+    r1c1Formula = r1c1Formula & "source_ws_xlsx,""'[Weekly Grade - W""&fixed_week_number&"" - ""&grade_level&"" - 2526.xlsx]Nota Semanal'"","
+    r1c1Formula = r1c1Formula & "source_ws_xlsm,""'[Weekly Grade - W""&fixed_week_number&"" - ""&grade_level&"" - 2526.xlsm]Nota Semanal'"","
+    r1c1Formula = r1c1Formula & "name_rng_xlsx,INDIRECT(source_ws_xlsx&""!$A:$A""),"
+    r1c1Formula = r1c1Formula & "grade_rng_xlsx,INDIRECT(source_ws_xlsx&""!$H:$H""),"
+    r1c1Formula = r1c1Formula & "name_rng_xlsm,INDIRECT(source_ws_xlsm&""!$A:$A""),"
+    r1c1Formula = r1c1Formula & "grade_rng_xlsm,INDIRECT(source_ws_xlsm&""!$H:$H""),"
+    r1c1Formula = r1c1Formula & "grade,IFERROR(XLOOKUP(clean_name,name_rng_xlsx,grade_rng_xlsx,""""),XLOOKUP(clean_name,name_rng_xlsm,grade_rng_xlsm,"""")),"
+    r1c1Formula = r1c1Formula & "IFERROR(grade,""""))"
     
-    ' Place formula in C5 using watchdog approach
-    If Not PlaceFormulaWithWatchdog(ws, formula, 10, logLines) Then
-        Log logLines, "ERROR: Failed to place formula in " & wb.Name & " after timeout"
-        Exit Sub
-    End If
-    
-    ' Copy formula to the rectangular range
+    ' Create the range and assign formula using R1C1 notation
     Dim rng As Object  ' Late-bound Range
     Set rng = ws.Range(ws.Cells(5, 3), ws.Cells(lastRow, lastCol)) ' C5 : lastRow,lastCol
     
-    On Error Resume Next
-    ws.Range(FORMULA_START_CELL).Copy
-    rng.PasteSpecial xlPasteFormulas
-    If Err.Number <> 0 Then
-        Log logLines, "ERROR copying formula to range in " & wb.Name & ": " & Err.Description
-        Err.Clear
-    Else
-        Log logLines, "Formula placed on range " & rng.Address(External:=False) & " in " & wb.Name
+    ' Use watchdog approach for the entire range assignment
+    If Not PlaceFormulaRangeWithWatchdog(ws, rng, r1c1Formula, 10, logLines) Then
+        Log logLines, "ERROR: Failed to place formula range in " & wb.Name & " after timeout"
+        Exit Sub
     End If
-    On Error GoTo 0
     
-    ' Clear clipboard using the correct Excel instance
-    If Not xlApp Is Nothing Then
-        On Error Resume Next
-        xlApp.CutCopyMode = False
-        On Error GoTo 0
-    End If
+    Log logLines, "Formula placed in range " & rng.Address(External:=False) & " in " & wb.Name
 End Sub
 
 Private Sub OpenMatchingFromSubfolders(ByVal xlApp As Object, ByVal xlAppCreated As Boolean, ByVal bimesterFolder As String, ByVal gradeCode As String, _
@@ -1184,6 +1168,45 @@ Private Function PlaceFormulaWithWatchdog(ByVal ws As Object, ByVal formula As S
     End If
     
     PlaceFormulaWithWatchdog = success
+End Function
+
+Private Function PlaceFormulaRangeWithWatchdog(ByVal ws As Object, ByVal rng As Object, ByVal formula As String, ByVal timeoutSeconds As Long, ByRef logLines As Collection) As Boolean
+    ' Places a formula range with retry logic and timeout to handle worksheet timing issues
+    Dim startTime As Double
+    Dim success As Boolean
+    Dim attemptCount As Long
+    
+    startTime = Timer
+    success = False
+    attemptCount = 0
+    
+    Do While (Timer - startTime) < timeoutSeconds
+        attemptCount = attemptCount + 1
+        
+        On Error Resume Next
+        rng.FormulaR1C1 = formula  ' This automatically adjusts references for each cell
+        If Err.Number = 0 Then
+            success = True
+            Log logLines, "SUCCESS: Placed formula range (attempt " & attemptCount & ") in " & ws.Parent.Name
+            Exit Do
+        Else
+            If attemptCount = 1 Then
+                Log logLines, "WARN: Failed to place formula range (attempt " & attemptCount & ") in " & ws.Parent.Name & " | " & Err.Description
+            End If
+            Err.Clear
+        End If
+        On Error GoTo 0
+        
+        ' Small delay before retry
+        DoEvents
+        SleepShort 50
+    Loop
+    
+    If Not success Then
+        Log logLines, "ERROR: Failed to place formula range after " & attemptCount & " attempts in " & Format$(Timer - startTime, "0.0") & " seconds in " & ws.Parent.Name
+    End If
+    
+    PlaceFormulaRangeWithWatchdog = success
 End Function
 
 ' ===========================
