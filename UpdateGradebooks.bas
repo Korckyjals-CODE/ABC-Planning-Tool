@@ -250,6 +250,19 @@ Public Sub GenerateRawGradebooks(ByVal strBimester As String, Optional ByVal gra
             Log logLines, "SKIP replacing formulas - template workbook not available: " & templatePath
         End If
         
+        ' 4.5.1) Clear zero grade values (cells that evaluate to 0)
+        If Not wbTemplate Is Nothing Then
+            On Error Resume Next
+            ClearZeroGrades wbTemplate, logLines
+            If Err.Number <> 0 Then
+                Log logLines, "ERROR clearing zero grades: " & templatePath & " | " & Err.Description
+                Err.Clear
+            End If
+            On Error GoTo ErrHandler
+        Else
+            Log logLines, "SKIP clearing zero grades - template workbook not available: " & templatePath
+        End If
+        
         ' 4.6) Run health check on generated gradebook (optional)
         If Not wbTemplate Is Nothing Then
             On Error Resume Next
@@ -436,6 +449,59 @@ Private Sub ReplaceFormulasWithValues(ByVal wb As Object, ByRef logLines As Coll
     Application.Calculation = tempCalc
     
     Log logLines, "Replaced " & cnt & " formulas with values in " & wb.Name & " | Range=" & rng.Address(External:=False)
+End Sub
+
+Private Sub ClearZeroGrades(ByVal wb As Object, ByRef logLines As Collection)
+    ' Clears all cells with grade value that evaluates to 0 in the rectangular range
+    ' Uses same range detection as ReplaceFormulasWithValues
+    
+    If wb Is Nothing Then
+        Log logLines, "ERROR: ClearZeroGrades called with Nothing workbook object"
+        Exit Sub
+    End If
+    
+    Dim ws As Object  ' Late-bound Worksheet
+    If wb.Worksheets.Count <> 1 Then
+        Log logLines, "WARN: Expected 1 sheet, found " & wb.Worksheets.Count & " in " & wb.Name & ". Using first sheet."
+    End If
+    Set ws = wb.Worksheets(1)
+    
+    Dim lastRow As Long, lastCol As Long
+    lastRow = GetLastNonEmptyRowInColumn(ws, 2)   ' column B = 2
+    If lastRow < 5 Then
+        Log logLines, "INFO: No data rows detected (lastRow < 5). Skipping zero grade clearing: " & wb.Name
+        Exit Sub
+    End If
+    
+    ' Use the same rule as ReplaceFormulasWithValues
+    lastCol = GetLastWeekColumnInRow(ws, 3)       ' try by "Week ..." header text
+    If lastCol < 3 Then
+        ' Fallback for older templates where headers are only styled (dark fill)
+        lastCol = GetLastBlackBackgroundColInRow(ws, 3)
+    End If
+    If lastCol < 3 Then
+        Log logLines, "INFO: No header columns detected in row 3 (text/fill). Skipping zero grade clearing: " & wb.Name
+        Exit Sub
+    End If
+    
+    Dim rng As Object  ' Late-bound Range
+    Set rng = ws.Range(ws.Cells(5, 3), ws.Cells(lastRow, lastCol)) ' C5 : lastRow,lastCol
+    
+    ' Clear cells that evaluate to 0
+    Dim cell As Object  ' Late-bound Range
+    Dim clearedCount As Long
+    Dim cellValue As Variant
+    
+    For Each cell In rng.Cells
+        cellValue = cell.Value
+        ' Check if cell value evaluates to 0 (handles 0, 0.0, "0", etc.)
+        If IsNumeric(cellValue) And CDbl(cellValue) = 0 Then
+            cell.ClearContents
+            clearedCount = clearedCount + 1
+        End If
+    Next cell
+    
+    Log logLines, "Cleared " & clearedCount & " zero grade cells in " & wb.Name & " | Range=" & rng.Address(External:=False)
 End Sub
 
 Private Function GetLastNonEmptyRowInColumn(ByVal ws As Object, ByVal colNum As Long) As Long
