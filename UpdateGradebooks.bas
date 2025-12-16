@@ -18,6 +18,10 @@ Private Const FORMULA_START_CELL As String = "C5"
 '    - Open template (use open instance if already open)
 '    - Place grade lookup formula in C5 and copy to rectangular range (C5 : lastRow, lastCol)
 '    - Convert formulas to values in rectangular range (C5 : lastRow, lastCol) per rules
+'    - Clear zero grade values in weekly columns
+'    - Place integrative activity formula in "Actividad Integradora" column
+'    - Convert integrative activity formulas to values
+'    - Clear zero grade values in integrative activity column
 '    - Save & close template
 '    - Close only the subfolder files we opened for this template
 '
@@ -216,10 +220,15 @@ Public Sub GenerateRawGradebooks(ByVal strBimester As String, Optional ByVal gra
         Dim wbTemplate As Object
         Set wbTemplate = GetOpenWorkbookByFullPath(fullTemplatePath)
         If wbTemplate Is Nothing Then
+            ' Use the local path for opening, not any converted SharePoint URL
+            Log logLines, "Opening template with local path: " & fullTemplatePath
             Set wbTemplate = Application.Workbooks.Open(fullTemplatePath)
             If Not wbTemplate Is Nothing Then
+                Log logLines, "Template opened successfully. FullName: " & wbTemplate.FullName
                 ' Track template workbook globally for error cleanup
                 globalOpenedWorkbooks.Add fullTemplatePath
+            Else
+                Log logLines, "ERROR: Failed to open template: " & fullTemplatePath
             End If
         Else
             Log logLines, "Template already open in main instance: " & fullTemplatePath
@@ -263,7 +272,45 @@ Public Sub GenerateRawGradebooks(ByVal strBimester As String, Optional ByVal gra
             Log logLines, "SKIP clearing zero grades - template workbook not available: " & templatePath
         End If
         
-        ' 4.6) Run health check on generated gradebook (optional)
+        ' 4.6) Open integrative activity workbook and place formula (after weekly grades)
+        Dim integrativeActivityWb As Object
+        Set integrativeActivityWb = Nothing
+        
+        If Not wbTemplate Is Nothing Then
+            On Error Resume Next
+            Set integrativeActivityWb = FindIntegrativeActivityWorkbook(wbTemplate, logLines)
+            If Not integrativeActivityWb Is Nothing Then
+                ' Track integrative activity workbook for cleanup
+                globalOpenedWorkbooks.Add integrativeActivityWb.FullName
+                Log logLines, "Added integrative activity workbook to global tracking (count=" & globalOpenedWorkbooks.Count & ")"
+            End If
+            On Error GoTo ErrHandler
+        End If
+        
+        If Not wbTemplate Is Nothing Then
+            On Error Resume Next
+            PlaceIntegrativeActivityFormulaWithWorkbook wbTemplate, integrativeActivityWb, logLines
+            If Err.Number <> 0 Then
+                Log logLines, "ERROR placing integrative activity formula in template: " & templatePath & " | " & Err.Description
+                Err.Clear
+            End If
+            On Error GoTo ErrHandler
+        End If
+        
+        ' 4.6.1) Convert integrative activity formulas to values
+        If Not wbTemplate Is Nothing Then
+            On Error Resume Next
+            ReplaceIntegrativeActivityFormulasWithValues wbTemplate, logLines
+            If Err.Number <> 0 Then
+                Log logLines, "ERROR replacing integrative activity formulas: " & templatePath & " | " & Err.Description
+                Err.Clear
+            End If
+            On Error GoTo ErrHandler
+        Else
+            Log logLines, "SKIP replacing integrative activity formulas - template workbook not available: " & templatePath
+        End If
+        
+        ' 4.7) Run health check on generated gradebook (optional)
         If Not wbTemplate Is Nothing Then
             On Error Resume Next
             RunHealthCheckOnGeneratedGradebook wbTemplate, templatePath
@@ -274,26 +321,47 @@ Public Sub GenerateRawGradebooks(ByVal strBimester As String, Optional ByVal gra
             On Error GoTo ErrHandler
         End If
         
-        ' 4.7) Save & close template
+        ' 4.8) Save & close template using cloud-aware pattern
         If Not wbTemplate Is Nothing Then
+            Log logLines, "Attempting to close template: " & wbTemplate.Name
+            Log logLines, "Template FullName: " & wbTemplate.FullName
+            Log logLines, "Template Saved property: " & wbTemplate.Saved
+            Log logLines, "Template ReadOnly property: " & wbTemplate.ReadOnly
+            
+            CloseWorkbookSmart wbTemplate, logLines
+            ' Remove template from global collection since it's now closed
             On Error Resume Next
-            wbTemplate.Save
+            RemoveFromGlobalCollection globalOpenedWorkbooks, fullTemplatePath
             If Err.Number <> 0 Then
-                Log logLines, "ERROR saving template: " & templatePath & " | " & Err.Description
-                Err.Clear
-            End If
-            wbTemplate.Close SaveChanges:=False
-            If Err.Number <> 0 Then
-                Log logLines, "ERROR closing template: " & templatePath & " | " & Err.Description
+                Log logLines, "ERROR removing template from global collection: " & Err.Number & " - " & Err.Description
                 Err.Clear
             End If
             On Error GoTo ErrHandler
-            ' Remove template from global collection since it's now closed
-            RemoveFromGlobalCollection globalOpenedWorkbooks, fullTemplatePath
         Else
             Log logLines, "SKIP save/close - template workbook not available: " & templatePath
         End If
-        ' 4.7) Close only the subfolder files that were opened in step 4.3
+        
+        ' 4.8.1) Close the integrative activity workbook
+        If Not integrativeActivityWb Is Nothing Then
+            On Error Resume Next
+            integrativeActivityWb.Close SaveChanges:=False
+            If Err.Number <> 0 Then
+                Log logLines, "ERROR closing integrative activity workbook: " & integrativeActivityWb.Name & " | " & Err.Description
+                Err.Clear
+            End If
+            On Error GoTo ErrHandler
+            ' Remove from global collection since it's now closed
+            On Error Resume Next
+            RemoveFromGlobalCollection globalOpenedWorkbooks, integrativeActivityWb.FullName
+            If Err.Number <> 0 Then
+                Log logLines, "ERROR removing integrative activity workbook from global collection: " & Err.Number & " - " & Err.Description
+                Err.Clear
+            End If
+            On Error GoTo ErrHandler
+            Set integrativeActivityWb = Nothing
+        End If
+        
+        ' 4.9) Close only the subfolder files that were opened in step 4.3
         CloseOpenedWorkbooks openedRefs, globalOpenedWorkbooks, logLines
         
 NextTemplate:
@@ -454,6 +522,7 @@ End Sub
 Private Sub ClearZeroGrades(ByVal wb As Object, ByRef logLines As Collection)
     ' Clears all cells with grade value that evaluates to 0 in the rectangular range
     ' Uses same range detection as ReplaceFormulasWithValues
+    ' Also clears zero values in the integrative activity column
     
     If wb Is Nothing Then
         Log logLines, "ERROR: ClearZeroGrades called with Nothing workbook object"
@@ -484,6 +553,7 @@ Private Sub ClearZeroGrades(ByVal wb As Object, ByRef logLines As Collection)
         Exit Sub
     End If
     
+    ' Clear zero grades in weekly columns
     Dim rng As Object  ' Late-bound Range
     Set rng = ws.Range(ws.Cells(5, 3), ws.Cells(lastRow, lastCol)) ' C5 : lastRow,lastCol
     
@@ -501,7 +571,29 @@ Private Sub ClearZeroGrades(ByVal wb As Object, ByRef logLines As Collection)
         End If
     Next cell
     
-    Log logLines, "Cleared " & clearedCount & " zero grade cells in " & wb.Name & " | Range=" & rng.Address(External:=False)
+    Log logLines, "Cleared " & clearedCount & " zero grade cells in weekly columns for " & wb.Name & " | Range=" & rng.Address(External:=False)
+    
+    ' Also clear zero grades in integrative activity column
+    Dim integrativeActivityCol As Long
+    integrativeActivityCol = GetIntegrativeActivityColumn(ws)
+    If integrativeActivityCol > 0 Then
+        Dim iaRng As Object  ' Late-bound Range
+        Set iaRng = ws.Range(ws.Cells(5, integrativeActivityCol), ws.Cells(lastRow, integrativeActivityCol))
+        
+        Dim iaClearedCount As Long
+        For Each cell In iaRng.Cells
+            cellValue = cell.Value
+            ' Check if cell value evaluates to 0 (handles 0, 0.0, "0", etc.)
+            If IsNumeric(cellValue) And CDbl(cellValue) = 0 Then
+                cell.ClearContents
+                iaClearedCount = iaClearedCount + 1
+            End If
+        Next cell
+        
+        Log logLines, "Cleared " & iaClearedCount & " zero grade cells in integrative activity column for " & wb.Name & " | Range=" & iaRng.Address(External:=False)
+    Else
+        Log logLines, "No integrative activity column found in " & wb.Name & " - skipping zero grade clearing for integrative activity"
+    End If
 End Sub
 
 Private Function GetLastNonEmptyRowInColumn(ByVal ws As Object, ByVal colNum As Long) As Long
@@ -554,6 +646,50 @@ Private Function GetLastWeekColumnInRow(ByVal ws As Object, ByVal rowNum As Long
         End If
     Next c
     GetLastWeekColumnInRow = 0
+End Function
+
+Private Function GetIntegrativeActivityColumn(ByVal ws As Object) As Long
+    ' Find the column containing "Actividad Integradora" in row 2
+    Dim lastUsedCol As Long, c As Long
+    lastUsedCol = ws.Cells(2, ws.Columns.Count).End(xlToLeft).Column
+    For c = 1 To lastUsedCol
+        Dim cellValue As String
+        cellValue = CStr(ws.Cells(2, c).Value)
+        If InStr(1, cellValue, "Actividad Integradora", vbTextCompare) > 0 Then
+            GetIntegrativeActivityColumn = c
+            Exit Function
+        End If
+    Next c
+    GetIntegrativeActivityColumn = 0
+End Function
+
+Private Function GetTotalColumnInIntegrativeActivity(ByVal wb As Object) As Long
+    ' Find the column containing "Total" in row 5 of the "Actividad Integradora" worksheet
+    If wb Is Nothing Then
+        GetTotalColumnInIntegrativeActivity = 0
+        Exit Function
+    End If
+    
+    Dim ws As Object
+    On Error Resume Next
+    Set ws = wb.Worksheets("Actividad Integradora")
+    If Err.Number <> 0 Or ws Is Nothing Then
+        GetTotalColumnInIntegrativeActivity = 0
+        Exit Function
+    End If
+    On Error GoTo 0
+    
+    Dim lastUsedCol As Long, c As Long
+    lastUsedCol = ws.Cells(5, ws.Columns.Count).End(xlToLeft).Column
+    For c = 1 To lastUsedCol
+        Dim cellValue As String
+        cellValue = CStr(ws.Cells(5, c).Value)
+        If InStr(1, cellValue, "Total", vbTextCompare) > 0 Then
+            GetTotalColumnInIntegrativeActivity = c
+            Exit Function
+        End If
+    Next c
+    GetTotalColumnInIntegrativeActivity = 0
 End Function
 
 Private Sub PlaceFormulaInTemplate(ByVal wb As Object, ByRef logLines As Collection)
@@ -655,6 +791,302 @@ Private Sub PlaceFormulaInTemplate(ByVal wb As Object, ByRef logLines As Collect
     On Error Resume Next
     Application.CutCopyMode = False
     On Error GoTo 0
+End Sub
+
+Private Sub PlaceIntegrativeActivityFormula(ByVal wb As Object, ByRef logLines As Collection)
+    ' Places the integrative activity grade lookup formula in the template
+    ' This version finds and opens the integrative activity workbook automatically
+    
+    If wb Is Nothing Then
+        Log logLines, "ERROR: PlaceIntegrativeActivityFormula called with Nothing workbook object"
+        Exit Sub
+    End If
+    
+    ' Find the integrative activity workbook
+    Dim integrativeActivityWb As Object
+    Set integrativeActivityWb = FindIntegrativeActivityWorkbook(wb, logLines)
+    If integrativeActivityWb Is Nothing Then
+        Log logLines, "INFO: No matching integrative activity workbook found. Skipping integrative activity formula placement: " & wb.Name
+        Exit Sub
+    End If
+    
+    ' Call the main function with the workbook
+    PlaceIntegrativeActivityFormulaWithWorkbook wb, integrativeActivityWb, logLines
+End Sub
+
+Private Sub PlaceIntegrativeActivityFormulaWithWorkbook(ByVal wb As Object, ByVal integrativeActivityWb As Object, ByRef logLines As Collection)
+    ' Places the integrative activity grade lookup formula in the template
+    ' This version accepts the integrative activity workbook as a parameter
+    
+    If wb Is Nothing Then
+        Log logLines, "ERROR: PlaceIntegrativeActivityFormulaWithWorkbook called with Nothing workbook object"
+        Exit Sub
+    End If
+    
+    If integrativeActivityWb Is Nothing Then
+        Log logLines, "INFO: No integrative activity workbook provided. Skipping integrative activity formula placement: " & wb.Name
+        Exit Sub
+    End If
+    
+    Dim ws As Object  ' Late-bound Worksheet
+    If wb.Worksheets.Count <> 1 Then
+        Log logLines, "WARN: Expected 1 sheet, found " & wb.Worksheets.Count & " in " & wb.Name & ". Using first sheet."
+    End If
+    Set ws = wb.Worksheets(1)
+    
+    ' Find the integrative activity column
+    Dim integrativeActivityCol As Long
+    integrativeActivityCol = GetIntegrativeActivityColumn(ws)
+    If integrativeActivityCol = 0 Then
+        Log logLines, "INFO: No 'Actividad Integradora' column found in row 2. Skipping integrative activity formula placement: " & wb.Name
+        Exit Sub
+    End If
+    
+    ' Get the range dimensions
+    Dim lastRow As Long
+    lastRow = GetLastNonEmptyRowInColumn(ws, 2)   ' column B = 2
+    If lastRow < 5 Then
+        Log logLines, "INFO: No data rows detected (lastRow < 5). Skipping integrative activity formula placement: " & wb.Name
+        Exit Sub
+    End If
+    
+    ' Find the Total column in the integrative activity workbook
+    Dim totalCol As Long
+    totalCol = GetTotalColumnInIntegrativeActivity(integrativeActivityWb)
+    If totalCol = 0 Then
+        Log logLines, "INFO: No 'Total' column found in integrative activity workbook. Skipping integrative activity formula placement: " & wb.Name
+        Exit Sub
+    End If
+    
+    ' Build the formula
+    Dim formula As String
+    Dim columnLetter As String
+    columnLetter = GetColumnLetter(totalCol)
+    
+    formula = "=LET("
+    formula = formula & "name,$B5,"
+    formula = formula & "parsed_name,TEXTAFTER(name,""- ""),"
+    formula = formula & "clean_name,TRIM(SUBSTITUTE(parsed_name,"" ,"","","")),"
+    formula = formula & "source_ws,""'[" & integrativeActivityWb.Name & "]Actividad Integradora'"","
+    formula = formula & "name_rng,INDIRECT(source_ws&""!$A:$A""),"
+    formula = formula & "grade_rng,INDIRECT(source_ws&""!$" & columnLetter & ":$" & columnLetter & """),"
+    formula = formula & "grade,XLOOKUP(clean_name,name_rng,grade_rng,0),"
+    formula = formula & "IFERROR(grade,0))"
+    
+    ' Place formula in the first data cell of the integrative activity column
+    Dim startCell As String
+    startCell = GetColumnLetter(integrativeActivityCol) & "5"
+    
+    On Error Resume Next
+    ws.Range(startCell).Formula = formula
+    If Err.Number <> 0 Then
+        Log logLines, "ERROR: Failed to place integrative activity formula in " & wb.Name & " | " & Err.Description
+        Err.Clear
+        Exit Sub
+    End If
+    On Error GoTo 0
+    
+    ' Copy formula to the range
+    Dim rng As Object  ' Late-bound Range
+    Set rng = ws.Range(ws.Cells(5, integrativeActivityCol), ws.Cells(lastRow, integrativeActivityCol))
+    
+    On Error Resume Next
+    ws.Range(startCell).Copy
+    rng.PasteSpecial xlPasteFormulas
+    If Err.Number <> 0 Then
+        Log logLines, "ERROR copying integrative activity formula to range in " & wb.Name & ": " & Err.Description
+        Err.Clear
+    Else
+        Log logLines, "Integrative activity formula placed on range " & rng.Address(External:=False) & " in " & wb.Name
+    End If
+    On Error GoTo 0
+    
+    ' Clear clipboard
+    On Error Resume Next
+    Application.CutCopyMode = False
+    On Error GoTo 0
+End Sub
+
+Private Function FindIntegrativeActivityWorkbook(ByVal templateWb As Object, ByRef logLines As Collection) As Object
+    ' Find the matching integrative activity workbook for this template
+    If templateWb Is Nothing Then
+        Set FindIntegrativeActivityWorkbook = Nothing
+        Exit Function
+    End If
+    
+    ' Extract grade level from template filename
+    Dim templateName As String
+    templateName = templateWb.Name
+    
+    Dim gradeLevelTag As String
+    gradeLevelTag = GetBetween(templateName, "Grades-", "-Computers")
+    If Len(gradeLevelTag) = 0 Then
+        Set FindIntegrativeActivityWorkbook = Nothing
+        Exit Function
+    End If
+    
+    Dim gradeLevel As String
+    gradeLevel = MapGradeTagToCode(gradeLevelTag)
+    If Len(gradeLevel) = 0 Then
+        Set FindIntegrativeActivityWorkbook = Nothing
+        Exit Function
+    End If
+    
+    ' Look for integrative activity workbook in the "Integrative Activity" subfolder
+    Dim bimesterFolder As String
+    ' Extract bimester folder path from template path
+    Dim templatePath As String
+    templatePath = templateWb.FullName
+    
+    ' If template was opened via SharePoint URL, convert back to local path for folder operations
+    If Left(templatePath, 4) = "http" Then
+        Dim localPath As String
+        localPath = SharePointUrlToLocal(templatePath)
+        If localPath <> "" Then
+            templatePath = localPath
+            Log logLines, "Converted SharePoint URL to local path for folder operations: " & localPath
+        Else
+            Log logLines, "ERROR: Could not convert SharePoint URL to local path: " & templatePath
+            Set FindIntegrativeActivityWorkbook = Nothing
+            Exit Function
+        End If
+    End If
+    
+    Dim pathParts As Variant
+    pathParts = Split(templatePath, "\")
+    Dim bimesterFolderName As String
+    If UBound(pathParts) >= 1 Then
+        bimesterFolderName = pathParts(UBound(pathParts) - 1)
+    End If
+    
+    ' Construct the integrative activity folder path
+    Dim integrativeActivityFolder As String
+    Dim lastSlashPos As Long
+    lastSlashPos = InStrRev(templatePath, "\")
+    If lastSlashPos > 0 Then
+        integrativeActivityFolder = Left(templatePath, lastSlashPos - 1) & "\Integrative Activity"
+    Else
+        Log logLines, "ERROR: Could not find backslash in template path: " & templatePath
+        Set FindIntegrativeActivityWorkbook = Nothing
+        Exit Function
+    End If
+    
+    Log logLines, "Looking for Integrative Activity folder: " & integrativeActivityFolder
+    
+    ' Look for the matching file
+    Dim fso As Object
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    
+    If Not fso.FolderExists(integrativeActivityFolder) Then
+        Log logLines, "Integrative Activity folder not found: " & integrativeActivityFolder
+        Log logLines, "Template path used: " & templatePath
+        Log logLines, "Last slash position: " & lastSlashPos
+        Set FindIntegrativeActivityWorkbook = Nothing
+        Exit Function
+    End If
+    
+    Dim pattern As String
+    pattern = "Integrative Activity - " & gradeLevel & " -"
+    
+    Dim file As Object
+    For Each file In fso.GetFolder(integrativeActivityFolder).Files
+        If LCase$(Right$(file.Name, 5)) = ".xlsm" Or LCase$(Right$(file.Name, 5)) = ".xlsx" Then
+            If InStr(1, file.Name, pattern, vbTextCompare) > 0 Then
+                ' Check if this workbook is already open
+                Dim wb As Object
+                Set wb = GetOpenWorkbookByFullPath(file.path)
+                If Not wb Is Nothing Then
+                    Set FindIntegrativeActivityWorkbook = wb
+                    Log logLines, "Found already open integrative activity workbook: " & file.Name
+                    Exit Function
+                Else
+                    ' Open the workbook if not already open
+                    On Error Resume Next
+                    Set wb = Application.Workbooks.Open(file.path)
+                    If Err.Number <> 0 Then
+                        Log logLines, "ERROR: Failed to open integrative activity workbook: " & file.Name & " | " & Err.Description
+                        Err.Clear
+                        Set FindIntegrativeActivityWorkbook = Nothing
+                        Exit Function
+                    End If
+                    On Error GoTo 0
+                    
+                    If Not wb Is Nothing Then
+                        Set FindIntegrativeActivityWorkbook = wb
+                        Log logLines, "Opened integrative activity workbook: " & file.Name
+                        Exit Function
+                    End If
+                End If
+            End If
+        End If
+    Next file
+    
+    Set FindIntegrativeActivityWorkbook = Nothing
+End Function
+
+Private Function GetColumnLetter(ByVal columnNumber As Long) As String
+    ' Convert column number to Excel column letter (1=A, 2=B, etc.)
+    Dim dividend As Long
+    Dim columnName As String
+    Dim modulo As Long
+    
+    dividend = columnNumber
+    Do While dividend > 0
+        modulo = (dividend - 1) Mod 26
+        columnName = Chr(65 + modulo) & columnName
+        dividend = Int((dividend - modulo) / 26)
+    Loop
+    
+    GetColumnLetter = columnName
+End Function
+
+Private Sub CloseWorkbookSmart(ByVal wb As Workbook, ByRef logLines As Collection)
+    ' Cloud-aware workbook closing pattern based on ChatGPT recommendations
+    Dim isCloud As Boolean
+    Dim autoSaveOn As Boolean
+    
+    On Error GoTo CleanFail
+    
+    ' Detect SharePoint/OneDrive URL (opened from cloud, not local sync folder)
+    isCloud = (LCase$(Left$(wb.FullName, 8)) = "https://") Or (InStr(1, wb.FullName, "sharepoint.com", vbTextCompare) > 0)
+    
+    ' AutoSave exists in Microsoft 365
+    On Error Resume Next
+    autoSaveOn = wb.AutoSaveOn
+    On Error GoTo CleanFail
+    
+    Log logLines, "Cloud detection: " & isCloud & " | AutoSave: " & autoSaveOn
+    
+    ' Never saved -> you must SaveAs somewhere
+    If wb.Path = "" Then
+        Log logLines, "Workbook never saved, saving to temp location"
+        wb.SaveAs ThisWorkbook.Path & "\Unsaved_" & wb.Name
+        wb.Close SaveChanges:=False
+        Log logLines, "Workbook saved and closed from temp location"
+        Exit Sub
+    End If
+    
+    If isCloud Then
+        ' Best practice for cloud files: avoid explicit Save; let Close do the commit
+        Log logLines, "Closing cloud workbook with SaveChanges:=True"
+        wb.Close SaveChanges:=True
+        Log logLines, "Cloud workbook closed successfully"
+    Else
+        ' Local path (including OneDrive *synced* local file): explicit Save is fine
+        Log logLines, "Saving local workbook explicitly"
+        wb.Save
+        Log logLines, "Local workbook saved, closing with SaveChanges:=False"
+        wb.Close SaveChanges:=False
+        Log logLines, "Local workbook saved and closed successfully"
+    End If
+    Exit Sub
+
+CleanFail:
+    ' If Close failed due to a transient cloud error, make it non-fatal
+    Log logLines, "ERROR in CloseWorkbookSmart: " & Err.Number & " - " & Err.Description
+    On Error Resume Next
+    wb.Close SaveChanges:=False
+    Log logLines, "Emergency close completed (SaveChanges:=False)"
 End Sub
 
 Private Sub OpenMatchingFromSubfolders(ByVal bimesterFolder As String, ByVal gradeCode As String, _
@@ -835,6 +1267,27 @@ Private Function ConvertSharePointURLToLocalPath(ByVal sharePointURL As String) 
     localPath = "C:\Users\korck\OneDrive - ABC BILINGUAL SCHOOL\" & relativePath
     
     ConvertSharePointURLToLocalPath = localPath
+End Function
+
+' Helper function to convert SharePoint URL to local path (for Files On-Demand compatibility)
+Private Function SharePointUrlToLocal(ByVal spUrl As String) As String
+    Dim root As String, rel As String, oneDriveRoot As String, p As Long
+    
+    ' Try OneDrive business root (e.g., "C:\Users\<you>\OneDrive - YourOrg")
+    oneDriveRoot = Environ("OneDriveCommercial")
+    If oneDriveRoot = "" Then oneDriveRoot = Environ("OneDrive")
+    
+    ' Look for the root library in SharePoint URL
+    p = InStr(1, spUrl, "/Documents/", vbTextCompare)
+    If p > 0 And oneDriveRoot <> "" Then
+        rel = Mid(spUrl, p + Len("/Documents/"))
+        rel = Replace(rel, "%20", " ")
+        ' Convert ALL forward slashes to backslashes
+        rel = Replace(rel, "/", "\")
+        SharePointUrlToLocal = oneDriveRoot & "\" & rel
+    Else
+        SharePointUrlToLocal = ""  ' unknown mapping; handle accordingly
+    End If
 End Function
 
 Private Function GetBetween(ByVal text As String, ByVal after As String, ByVal before As String) As String
@@ -1068,6 +1521,451 @@ Public Sub TestGenerateRawGradebooksWithFiltering()
     ' GenerateRawGradebooks "B1", testGradeLevels  ' Uncomment to test with actual data
     
     Debug.Print "Test functions completed. Uncomment the actual function calls to test with real data."
+End Sub
+
+Public Sub TestIntegrativeActivityOnly(ByVal strBimester As String, Optional ByVal gradeLevels As Variant = Empty)
+    ' Test function to process ONLY integrative activities, skipping weekly grade processing
+    ' This is for testing purposes only - remove or comment out in production
+    
+    Dim strGradebooksTempFolderURL As String
+    Dim strSourceFolderURL As String
+    Dim strBimesterFolderURL As String
+    
+    ' ==== PLACEHOLDERS: set these three before running ====
+    strGradebooksTempFolderURL = TrimTrailingSlash("C:\Users\korck\OneDrive - ABC BILINGUAL SCHOOL\2526\Computers\Temp_Grades\")
+    strSourceFolderURL = TrimTrailingSlash("C:\Users\korck\OneDrive - ABC BILINGUAL SCHOOL\2526\Computers\Grades\")
+    strBimesterFolderURL = JoinPath(strGradebooksTempFolderURL, strBimester)   ' e.g., B1
+
+    ' ======================================================
+    ' Initialize logging for health check validation
+    ' ======================================================
+    Dim logLines As Collection
+    Set logLines = New Collection
+
+    ' ======================================================
+    ' Health Check Validation - SKIPPED FOR TESTING
+    ' ======================================================
+    Log logLines, "TEST MODE: Skipping health check validation for integrative activity testing"
+    
+    Dim fso As Object
+    Dim prevCalc As XlCalculation
+    Dim prevScreenUpdating As Boolean
+    Dim prevDisplayAlerts As Boolean
+    Dim prevEvents As Boolean
+    Dim booEnablePerformanceGuards As Boolean
+    
+    ' Global tracking for all opened workbooks (for error cleanup)
+    Dim globalOpenedWorkbooks As Collection
+    Set globalOpenedWorkbooks = New Collection
+    
+    ' Track formula placement errors
+    Dim formulaErrors As Long
+    formulaErrors = 0
+    
+    On Error GoTo ErrHandler
+    
+    booEnablePerformanceGuards = True
+    
+    ' UX / Performance guards
+    prevCalc = Application.Calculation
+    prevScreenUpdating = Application.ScreenUpdating
+    prevDisplayAlerts = Application.DisplayAlerts
+    prevEvents = Application.EnableEvents
+    
+    If booEnablePerformanceGuards = True Then
+        Application.ScreenUpdating = False
+        Application.DisplayAlerts = False
+        Application.Calculation = xlCalculationManual
+        Application.EnableEvents = False
+    End If
+    
+    ' 1) Empty temp folder (contents only)
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    EnsureFolderExists fso, strGradebooksTempFolderURL
+    DeleteFolderContents fso, strGradebooksTempFolderURL
+    Log logLines, "TEST MODE: Cleared temp folder: " & strGradebooksTempFolderURL
+    
+    ' 2) Copy all contents from source -> temp
+    EnsureFolderExists fso, strSourceFolderURL
+    fso.CopyFolder strSourceFolderURL & "\*", strGradebooksTempFolderURL & "\"
+    Log logLines, "TEST MODE: Copied all contents from: " & strSourceFolderURL & " -> " & strGradebooksTempFolderURL
+    
+    ' 3) Resolve bimester folder
+    EnsureFolderExists fso, strBimesterFolderURL
+    Log logLines, "TEST MODE: Bimester folder: " & strBimesterFolderURL
+    
+    ' 4) Count total .xlsx templates for progress tracking
+    Dim templateCount As Long
+    templateCount = 0
+    Dim templatePath As String
+    templatePath = Dir(strBimesterFolderURL & "\*.xlsx")
+    
+    ' First pass: count templates
+    Do While Len(templatePath) > 0
+        templateCount = templateCount + 1
+        templatePath = Dir()
+    Loop
+    
+    ' Reset for actual processing
+    templatePath = Dir(strBimesterFolderURL & "\*.xlsx")
+    
+    ' Clear previous health report entries before starting new run
+    ClearPreviousHealthReportEntries
+    Log logLines, "TEST MODE: Cleared previous health report entries for new run"
+    
+    ' Initialize ProgressBar
+    Dim MyProgressbar As ProgressBar
+    Set MyProgressbar = New ProgressBar
+    
+    With MyProgressbar
+        .Title = "TEST: Integrative Activity Only - " & strBimester
+        .ExcelStatusBar = True
+        .StartColour = rgbMediumSeaGreen
+        .EndColour = rgbGreen
+        .TotalActions = templateCount
+    End With
+    
+    MyProgressbar.ShowBar
+    Log logLines, "TEST MODE: Starting processing of " & templateCount & " templates (integrative activity only)"
+    
+    ' Second pass: process templates
+    Do While Len(templatePath) > 0
+        Dim fullTemplatePath As String
+        fullTemplatePath = strBimesterFolderURL & "\" & templatePath
+        
+        ' 4.1) Extract tag after "Grades-" and before "-Computers"
+        Dim strGradeLevelTag As String
+        strGradeLevelTag = GetBetween(templatePath, "Grades-", "-Computers")
+        
+        If Len(strGradeLevelTag) = 0 Then
+            Log logLines, "TEST MODE: SKIP (cannot parse grade tag): " & templatePath
+            GoTo NextTemplate
+        End If
+        
+        ' 4.2) Map to grade code
+        Dim strGradeLevel As String
+        strGradeLevel = MapGradeTagToCode(strGradeLevelTag)
+        If Len(strGradeLevel) = 0 Then
+            Log logLines, "TEST MODE: SKIP (unknown grade mapping for tag '" & strGradeLevelTag & "'): " & templatePath
+            GoTo NextTemplate
+        End If
+        
+        ' 4.2.1) Filter by grade levels if provided
+        If Not IsEmpty(gradeLevels) Then
+            If Not IsGradeLevelIncluded(strGradeLevel, gradeLevels) Then
+                Log logLines, "TEST MODE: SKIP (grade level '" & strGradeLevel & "' not in filter list): " & templatePath
+                GoTo NextTemplate
+            End If
+        End If
+        
+        Log logLines, "TEST MODE: Processing template: " & templatePath & " | Tag='" & strGradeLevelTag & "' ? Code='" & strGradeLevel & "'"
+        
+        ' Update progress bar
+        MyProgressbar.NextAction "TEST: Processing '" & templatePath & "' (Integrative Activity Only)", True
+        
+        ' SKIP: Weekly grade processing (steps 4.3, 4.4, 4.5, 4.5.1)
+        Log logLines, "TEST MODE: Skipping weekly grade processing for: " & templatePath
+        
+        ' 4.4) Open the template workbook in the main Application instance
+        Dim wbTemplate As Object
+        Set wbTemplate = GetOpenWorkbookByFullPath(fullTemplatePath)
+        If wbTemplate Is Nothing Then
+            ' Use the local path for opening, not any converted SharePoint URL
+            Log logLines, "TEST MODE: Opening template with local path: " & fullTemplatePath
+            Set wbTemplate = Application.Workbooks.Open(fullTemplatePath)
+            If Not wbTemplate Is Nothing Then
+                Log logLines, "TEST MODE: Template opened successfully. FullName: " & wbTemplate.FullName
+                ' Track template workbook globally for error cleanup
+                globalOpenedWorkbooks.Add fullTemplatePath
+            Else
+                Log logLines, "TEST MODE: ERROR: Failed to open template: " & fullTemplatePath
+            End If
+        Else
+            Log logLines, "TEST MODE: Template already open in main instance: " & fullTemplatePath
+        End If
+        
+        ' 4.6) Open integrative activity workbook and place formula (TEST MODE - ONLY THIS STEP)
+        Dim integrativeActivityWb As Object
+        Set integrativeActivityWb = Nothing
+        
+        If Not wbTemplate Is Nothing Then
+            On Error Resume Next
+            Set integrativeActivityWb = FindIntegrativeActivityWorkbook(wbTemplate, logLines)
+            If Not integrativeActivityWb Is Nothing Then
+                ' Track integrative activity workbook for cleanup
+                globalOpenedWorkbooks.Add integrativeActivityWb.FullName
+                Log logLines, "TEST MODE: Added integrative activity workbook to global tracking (count=" & globalOpenedWorkbooks.Count & ")"
+            End If
+            On Error GoTo ErrHandler
+        End If
+        
+        If Not wbTemplate Is Nothing Then
+            On Error Resume Next
+            PlaceIntegrativeActivityFormulaWithWorkbook wbTemplate, integrativeActivityWb, logLines
+            If Err.Number <> 0 Then
+                formulaErrors = formulaErrors + 1
+                Log logLines, "TEST MODE: ERROR placing integrative activity formula in template: " & templatePath & " | " & Err.Description
+                Err.Clear
+            End If
+            On Error GoTo ErrHandler
+        End If
+        
+        ' 4.7) Convert integrative activity formulas to values
+        If Not wbTemplate Is Nothing Then
+            On Error Resume Next
+            ReplaceIntegrativeActivityFormulasWithValues wbTemplate, logLines
+            If Err.Number <> 0 Then
+                Log logLines, "TEST MODE: ERROR replacing integrative activity formulas: " & templatePath & " | " & Err.Description
+                Err.Clear
+            End If
+            On Error GoTo ErrHandler
+        Else
+            Log logLines, "TEST MODE: SKIP replacing integrative activity formulas - template workbook not available: " & templatePath
+        End If
+        
+        ' 4.8) Clear zero grades in integrative activity column only
+        If Not wbTemplate Is Nothing Then
+            On Error Resume Next
+            ClearIntegrativeActivityZeroGrades wbTemplate, logLines
+            If Err.Number <> 0 Then
+                Log logLines, "TEST MODE: ERROR clearing integrative activity zero grades: " & templatePath & " | " & Err.Description
+                Err.Clear
+            End If
+            On Error GoTo ErrHandler
+        Else
+            Log logLines, "TEST MODE: SKIP clearing integrative activity zero grades - template workbook not available: " & templatePath
+        End If
+        
+        ' SKIP: Health check (step 4.7)
+        Log logLines, "TEST MODE: Skipping health check for: " & templatePath
+        
+        ' 4.8) Save & close template using cloud-aware pattern
+        If Not wbTemplate Is Nothing Then
+            Log logLines, "TEST MODE: Attempting to close template: " & wbTemplate.Name
+            Log logLines, "TEST MODE: Template FullName: " & wbTemplate.FullName
+            Log logLines, "TEST MODE: Template Saved property: " & wbTemplate.Saved
+            Log logLines, "TEST MODE: Template ReadOnly property: " & wbTemplate.ReadOnly
+            
+            CloseWorkbookSmart wbTemplate, logLines
+            ' Remove template from global collection since it's now closed
+            On Error Resume Next
+            RemoveFromGlobalCollection globalOpenedWorkbooks, fullTemplatePath
+            If Err.Number <> 0 Then
+                Log logLines, "TEST MODE: ERROR removing template from global collection: " & Err.Number & " - " & Err.Description
+                Err.Clear
+            End If
+            On Error GoTo ErrHandler
+        Else
+            Log logLines, "TEST MODE: SKIP save/close - template workbook not available: " & templatePath
+        End If
+        
+        ' 4.8.1) Close the integrative activity workbook
+        If Not integrativeActivityWb Is Nothing Then
+            On Error Resume Next
+            integrativeActivityWb.Close SaveChanges:=False
+            If Err.Number <> 0 Then
+                Log logLines, "TEST MODE: ERROR closing integrative activity workbook: " & integrativeActivityWb.Name & " | " & Err.Description
+                Err.Clear
+            End If
+            On Error GoTo ErrHandler
+            ' Remove from global collection since it's now closed
+            On Error Resume Next
+            RemoveFromGlobalCollection globalOpenedWorkbooks, integrativeActivityWb.FullName
+            If Err.Number <> 0 Then
+                Log logLines, "TEST MODE: ERROR removing integrative activity workbook from global collection: " & Err.Number & " - " & Err.Description
+                Err.Clear
+            End If
+            On Error GoTo ErrHandler
+            Set integrativeActivityWb = Nothing
+        End If
+        
+NextTemplate:
+        templatePath = Dir() ' next .xlsx
+    Loop
+    
+    ' Process completed successfully
+    Log logLines, "TEST MODE: SUCCESS: Integrative activity processing completed - all workbooks closed properly"
+    
+    ' Complete progress bar
+    On Error Resume Next
+    MyProgressbar.Complete
+    If Err.Number <> 0 Then
+        Log logLines, "TEST MODE: WARN: Error completing progress bar: " & Err.Description
+        Err.Clear
+    End If
+    
+    ' Close progress bar after completion
+    On Error Resume Next
+    MyProgressbar.Terminate
+    If Err.Number <> 0 Then
+        Log logLines, "TEST MODE: WARN: Error terminating progress bar: " & Err.Description
+        Err.Clear
+    End If
+    Set MyProgressbar = Nothing
+    
+    ' Flush log (while performance guards are still active)
+    DumpLogToImmediate logLines
+    DumpLogToSheet logLines, "IA_Test_Log"
+    
+    ' Wrap-up - restore performance guards AFTER logging
+    On Error Resume Next
+    Application.Calculation = prevCalc
+    Application.EnableEvents = prevEvents
+    If prevCalc <> xlCalculationManual Then Application.Calculate
+    If Err.Number <> 0 Then
+        Log logLines, "TEST MODE: WARN: Error during calculation restore: " & Err.Description
+        Err.Clear
+    End If
+    
+    Application.ScreenUpdating = prevScreenUpdating
+    Application.DisplayAlerts = prevDisplayAlerts
+    
+    ' Process completed
+    Dim finalMessage As String
+    finalMessage = "TEST MODE: Integrative Activity processing completed successfully."
+    If formulaErrors > 0 Then
+        finalMessage = finalMessage & " However, " & formulaErrors & " formula placement error(s) occurred. Check the log for details."
+    Else
+        finalMessage = finalMessage & " Check the IA_Test_Log sheet for details."
+    End If
+    
+    On Error Resume Next
+    MsgBox finalMessage, vbInformation, "TEST: Process Complete"
+    If Err.Number <> 0 Then
+        Log logLines, "TEST MODE: WARN: Error showing completion message: " & Err.Description
+        Err.Clear
+    End If
+    
+    Exit Sub
+
+ErrHandler:
+    ' Best-effort restore
+    On Error Resume Next
+    
+    ' Close progress bar if it exists
+    If Not MyProgressbar Is Nothing Then
+        MyProgressbar.Terminate
+        Set MyProgressbar = Nothing
+    End If
+    
+    ' Close all tracked workbooks before restoring settings
+    CloseAllTrackedWorkbooks globalOpenedWorkbooks, logLines
+    
+    Log logLines, "TEST MODE: FATAL: " & Err.Number & " - " & Err.Description
+    DumpLogToImmediate logLines
+    DumpLogToSheet logLines, "IA_Test_Log"
+    
+    ' Restore performance guards AFTER logging
+    Application.Calculation = prevCalc
+    If prevCalc <> xlCalculationManual Then Application.Calculate
+    Application.ScreenUpdating = prevScreenUpdating
+    Application.DisplayAlerts = prevDisplayAlerts
+    Application.EnableEvents = prevEvents
+    
+    MsgBox "TEST MODE: Integrative Activity processing encountered an error: " & Err.Description, vbExclamation
+End Sub
+
+Private Sub ReplaceIntegrativeActivityFormulasWithValues(ByVal wb As Object, ByRef logLines As Collection)
+    ' Converts only the integrative activity formulas to values (for testing)
+    
+    If wb Is Nothing Then
+        Log logLines, "ERROR: ReplaceIntegrativeActivityFormulasWithValues called with Nothing workbook object"
+        Exit Sub
+    End If
+    
+    Dim ws As Object  ' Late-bound Worksheet
+    If wb.Worksheets.Count <> 1 Then
+        Log logLines, "WARN: Expected 1 sheet, found " & wb.Worksheets.Count & " in " & wb.Name & ". Using first sheet."
+    End If
+    Set ws = wb.Worksheets(1)
+    
+    Dim lastRow As Long
+    lastRow = GetLastNonEmptyRowInColumn(ws, 2)   ' column B = 2
+    If lastRow < 5 Then
+        Log logLines, "INFO: No data rows detected (lastRow < 5). Skipping integrative activity formula conversion: " & wb.Name
+        Exit Sub
+    End If
+    
+    ' Find the integrative activity column
+    Dim integrativeActivityCol As Long
+    integrativeActivityCol = GetIntegrativeActivityColumn(ws)
+    If integrativeActivityCol = 0 Then
+        Log logLines, "INFO: No 'Actividad Integradora' column found in row 2. Skipping integrative activity formula conversion: " & wb.Name
+        Exit Sub
+    End If
+    
+    Dim rng As Object  ' Late-bound Range
+    Set rng = ws.Range(ws.Cells(5, integrativeActivityCol), ws.Cells(lastRow, integrativeActivityCol))
+    
+    ' Temporarily enable calculation to ensure formulas are calculated before replacement
+    Dim tempCalc As XlCalculation
+    tempCalc = Application.Calculation
+    Application.Calculation = xlCalculationAutomatic
+    Application.Calculate  ' Ensure all formulas are calculated
+    
+    ' Replace formulas with values
+    Dim cell As Object  ' Late-bound Range
+    Dim cnt As Long
+    For Each cell In rng.Cells
+        If cell.HasFormula Then
+            cell.value = cell.value
+            cnt = cnt + 1
+        End If
+    Next cell
+    
+    ' Restore original calculation mode
+    Application.Calculation = tempCalc
+    
+    Log logLines, "Replaced " & cnt & " integrative activity formulas with values in " & wb.Name & " | Range=" & rng.Address(External:=False)
+End Sub
+
+Private Sub ClearIntegrativeActivityZeroGrades(ByVal wb As Object, ByRef logLines As Collection)
+    ' Clears only zero values in the integrative activity column (for testing)
+    
+    If wb Is Nothing Then
+        Log logLines, "ERROR: ClearIntegrativeActivityZeroGrades called with Nothing workbook object"
+        Exit Sub
+    End If
+    
+    Dim ws As Object  ' Late-bound Worksheet
+    If wb.Worksheets.Count <> 1 Then
+        Log logLines, "WARN: Expected 1 sheet, found " & wb.Worksheets.Count & " in " & wb.Name & ". Using first sheet."
+    End If
+    Set ws = wb.Worksheets(1)
+    
+    Dim lastRow As Long
+    lastRow = GetLastNonEmptyRowInColumn(ws, 2)   ' column B = 2
+    If lastRow < 5 Then
+        Log logLines, "INFO: No data rows detected (lastRow < 5). Skipping integrative activity zero grade clearing: " & wb.Name
+        Exit Sub
+    End If
+    
+    ' Find the integrative activity column
+    Dim integrativeActivityCol As Long
+    integrativeActivityCol = GetIntegrativeActivityColumn(ws)
+    If integrativeActivityCol = 0 Then
+        Log logLines, "INFO: No 'Actividad Integradora' column found in row 2. Skipping integrative activity zero grade clearing: " & wb.Name
+        Exit Sub
+    End If
+    
+    Dim rng As Object  ' Late-bound Range
+    Set rng = ws.Range(ws.Cells(5, integrativeActivityCol), ws.Cells(lastRow, integrativeActivityCol))
+    
+    ' Clear cells that evaluate to 0
+    Dim cell As Object  ' Late-bound Range
+    Dim clearedCount As Long
+    Dim cellValue As Variant
+    
+    For Each cell In rng.Cells
+        cellValue = cell.Value
+        ' Check if cell value evaluates to 0 (handles 0, 0.0, "0", etc.)
+        If IsNumeric(cellValue) And CDbl(cellValue) = 0 Then
+            cell.ClearContents
+            clearedCount = clearedCount + 1
+        End If
+    Next cell
+    
+    Log logLines, "Cleared " & clearedCount & " zero grade cells in integrative activity column for " & wb.Name & " | Range=" & rng.Address(External:=False)
 End Sub
 
 
