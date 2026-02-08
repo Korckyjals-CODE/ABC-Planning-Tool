@@ -2058,24 +2058,81 @@ GetColumnNumber = intColNumber
 
 End Function
 
+' Builds dictionary lookups for UpdateTblMaster: exact and placeholder keys from tblGeneric,
+' composite key (section|project|activity) from tblTBox. Value in each dict is 3-element array
+' (0)=duration, (1)=objective, (2)=description. Call once before looping grades.
+Sub BuildMasterListLookups(tblGeneric As ListObject, tblTBox As ListObject, _
+    ByRef dGenericExact As Object, ByRef dGenericPlaceholder As Object, ByRef dTBox As Object)
+    Dim j As Long
+    Dim strActivity As String
+    Dim strPlaceholder As String
+    Dim strKey As String
+    Set dGenericExact = CreateObject("Scripting.Dictionary")
+    Set dGenericPlaceholder = CreateObject("Scripting.Dictionary")
+    Set dTBox = CreateObject("Scripting.Dictionary")
+    ' tblGeneric: col 1=activity, 2=objective, 3=description, 4=duration. Store new array per row.
+    For j = 1 To tblGeneric.ListRows.Count
+        strActivity = tblGeneric.DataBodyRange.Cells(j, 1).Value
+        If Not IsEmpty(strActivity) And strActivity <> "" Then
+            dGenericExact(strActivity) = Array( _
+                tblGeneric.DataBodyRange.Cells(j, 4).Value, _
+                tblGeneric.DataBodyRange.Cells(j, 2).Value, _
+                tblGeneric.DataBodyRange.Cells(j, 3).Value)
+            strPlaceholder = ReplaceNumbersWithPlaceholder(strActivity)
+            If Not dGenericPlaceholder.Exists(strPlaceholder) Then
+                dGenericPlaceholder(strPlaceholder) = Array( _
+                    tblGeneric.DataBodyRange.Cells(j, 4).Value, _
+                    tblGeneric.DataBodyRange.Cells(j, 2).Value, _
+                    tblGeneric.DataBodyRange.Cells(j, 3).Value)
+            End If
+        End If
+    Next j
+    ' tblTBox: col 1=section, 2=project, 5=activity, 7=objective, 8=description, 9=duration
+    For j = 1 To tblTBox.ListRows.Count
+        strKey = CStr(tblTBox.DataBodyRange.Cells(j, 1).Value) & "|" & _
+                 CStr(tblTBox.DataBodyRange.Cells(j, 2).Value) & "|" & _
+                 CStr(tblTBox.DataBodyRange.Cells(j, 5).Value)
+        dTBox(strKey) = Array( _
+            tblTBox.DataBodyRange.Cells(j, 9).Value, _
+            tblTBox.DataBodyRange.Cells(j, 7).Value, _
+            tblTBox.DataBodyRange.Cells(j, 8).Value)
+    Next j
+End Sub
+
 Sub UpdateMasterLists()
+    Dim arrGrade As Variant
+    Dim i As Long
+    Dim tblMaster As ListObject
+    Dim tblGeneric As ListObject
+    Dim tblTBox As ListObject
+    Dim strGrade As String
+    Dim dGenericExact As Object
+    Dim dGenericPlaceholder As Object
+    Dim dTBox As Object
+    Dim originalScreenUpdating As Boolean
+    Dim originalCalculation As XlCalculation
 
-Dim arrGrade As Variant
-Dim i As Integer
-Dim tblMaster As ListObject
-Dim tblGeneric As ListObject
-Dim tblTBox As ListObject
-Dim strGrade As String
+    Set tblGeneric = wsGenericActivities.ListObjects(1)
+    Set tblTBox = wsTBoxActivities.ListObjects(1)
+    originalScreenUpdating = Application.ScreenUpdating
+    originalCalculation = Application.Calculation
+    On Error GoTo RestoreSettings
+    Application.ScreenUpdating = False
+    Application.Calculation = xlCalculationManual
 
-Set tblGeneric = wsGenericActivities.ListObjects(1)
-Set tblTBox = wsTBoxActivities.ListObjects(1)
-arrGrade = Array("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "DC3")
-For i = 0 To UBound(arrGrade)
-    strGrade = arrGrade(i)
-    Set tblMaster = wsMasterList.ListObjects("tblMasterList" & strGrade)
-    UpdateTblMaster tblMaster, tblGeneric, tblTBox, strGrade
-Next
+    BuildMasterListLookups tblGeneric, tblTBox, dGenericExact, dGenericPlaceholder, dTBox
+    arrGrade = Array("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "DC3")
+    For i = 0 To UBound(arrGrade)
+        strGrade = arrGrade(i)
+        Set tblMaster = wsMasterList.ListObjects("tblMasterList" & strGrade)
+        UpdateTblMaster tblMaster, dGenericExact, dGenericPlaceholder, dTBox, strGrade
+    Next i
 
+RestoreSettings:
+    Application.ScreenUpdating = originalScreenUpdating
+    Application.Calculation = originalCalculation
+    If originalCalculation = xlCalculationAutomatic Then Application.Calculate
+    On Error GoTo 0
 End Sub
 
 Sub UpdateObjectiveAndDescription()
@@ -2119,84 +2176,65 @@ End If
 
 End Sub
 
-Sub UpdateTblMaster(tblMaster As ListObject, tblGeneric As ListObject, tblTBox As ListObject, strSection As String)
+Sub UpdateTblMaster(tblMaster As ListObject, dGenericExact As Object, dGenericPlaceholder As Object, dTBox As Object, strSection As String)
+    Dim nRows As Long
+    Dim arrActivities As Variant
+    Dim arrOut() As Variant
     Dim i As Long
     Dim strActivity As String
-    Dim found As Boolean
     Dim rNumbers As Variant
     Dim strLessonNumber As String
     Dim strBimesterNumber As String
     Dim strProjectNumber As String
-    
-    ' Clear columns 4 and 5 from tblMaster
-    tblMaster.ListColumns(3).DataBodyRange.ClearContents
-    tblMaster.ListColumns(4).DataBodyRange.ClearContents
-    tblMaster.ListColumns(5).DataBodyRange.ClearContents
+    Dim strPlaceholder As String
+    Dim projNum As String
+    Dim actNum As String
+    Dim strTBoxKey As String
+    Dim v As Variant
 
-    ' Loop through each row of column 2 in tblMaster
-    For i = 1 To tblMaster.ListRows.count
-        strActivity = tblMaster.DataBodyRange.Cells(i, 2).value ' Column 2
+    nRows = tblMaster.ListRows.Count
+    If nRows = 0 Then Exit Sub
+
+    ' Bulk read activity column (col 2)
+    arrActivities = tblMaster.ListColumns(2).DataBodyRange.Value
+
+    ' Single clear for columns 3-5
+    tblMaster.DataBodyRange.Columns(3).Resize(nRows, 3).ClearContents
+
+    ReDim arrOut(1 To nRows, 1 To 3)
+
+    For i = 1 To nRows
+        strActivity = arrActivities(i, 1)
         rNumbers = GetNumbers(strActivity)
         strLessonNumber = rNumbers(1)
         strBimesterNumber = rNumbers(2)
         strProjectNumber = rNumbers(3)
-        found = False ' Initialize found flag
-        
-        ' Try to find exact match in tblGeneric column 1
-        Dim rngFound As Range
-        Set rngFound = tblGeneric.DataBodyRange.Columns(1).Find(What:=strActivity, LookIn:=xlValues, LookAt:=xlWhole)
-        
-        If Not rngFound Is Nothing Then
-            ' Found exact match
-            tblMaster.DataBodyRange.Cells(i, 3).value = rngFound.Offset(0, 3).value
-            tblMaster.DataBodyRange.Cells(i, 4).value = ReplaceNumberPlaceholders(rngFound.Offset(0, 1).value, _
-                strSection, strLessonNumber, strBimesterNumber, strProjectNumber) ' Column 2
-            tblMaster.DataBodyRange.Cells(i, 5).value = ReplaceNumberPlaceholders(rngFound.Offset(0, 2).value, _
-                strSection, strLessonNumber, strBimesterNumber, strProjectNumber) ' Column 3
-            found = True
+
+        If dGenericExact.Exists(strActivity) Then
+            v = dGenericExact(strActivity)
+            arrOut(i, 1) = v(0)
+            arrOut(i, 2) = ReplaceNumberPlaceholders(v(1), strSection, strLessonNumber, strBimesterNumber, strProjectNumber)
+            arrOut(i, 3) = ReplaceNumberPlaceholders(v(2), strSection, strLessonNumber, strBimesterNumber, strProjectNumber)
         Else
-            ' Replace numbers in strActivity with "<number>"
-            Dim strActivityModified As String
-            strActivityModified = ReplaceNumbersWithPlaceholder(strActivity)
-            
-            ' Try to find modified strActivity in tblGeneric
-            Set rngFound = tblGeneric.DataBodyRange.Columns(1).Find(What:=strActivityModified, LookIn:=xlValues, LookAt:=xlWhole)
-            
-            If Not rngFound Is Nothing Then
-                ' Found match
-                tblMaster.DataBodyRange.Cells(i, 3).value = rngFound.Offset(0, 3).value
-                tblMaster.DataBodyRange.Cells(i, 4).value = ReplaceNumberPlaceholders(rngFound.Offset(0, 1).value, _
-                    strSection, strLessonNumber, strBimesterNumber, strProjectNumber) ' Column 2
-                tblMaster.DataBodyRange.Cells(i, 5).value = ReplaceNumberPlaceholders(rngFound.Offset(0, 2).value, _
-                    strSection, strLessonNumber, strBimesterNumber, strProjectNumber) ' Column 3
-                found = True
-            Else
-                ' Check if strActivity matches "Project X, Activity Y"
-                Dim projNum As String
-                Dim actNum As String
-                If ParseProjectActivity(strActivity, projNum, actNum) Then
-                    ' Loop through tblTBox to find matching row
-                    Dim j As Long
-                    For j = 1 To tblTBox.ListRows.count
-                        If tblTBox.DataBodyRange.Cells(j, 1).value = strSection Then ' Column 1
-                            If tblTBox.DataBodyRange.Cells(j, 2).value = projNum Then ' Column 2
-                                If tblTBox.DataBodyRange.Cells(j, 5).value = actNum Then ' Column 5
-                                    ' Found match
-                                    tblMaster.DataBodyRange.Cells(i, 3).value = tblTBox.DataBodyRange.Cells(j, 9).value
-                                    tblMaster.DataBodyRange.Cells(i, 4).value = ReplaceNumberPlaceholders(tblTBox.DataBodyRange.Cells(j, 7).value, _
-                                        strSection, strLessonNumber, strBimesterNumber, strProjectNumber) ' Column 7
-                                    tblMaster.DataBodyRange.Cells(i, 5).value = ReplaceNumberPlaceholders(tblTBox.DataBodyRange.Cells(j, 8).value, _
-                                        strSection, strLessonNumber, strBimesterNumber, strProjectNumber) ' Column 8
-                                    found = True
-                                    Exit For
-                                End If
-                            End If
-                        End If
-                    Next j
+            strPlaceholder = ReplaceNumbersWithPlaceholder(strActivity)
+            If dGenericPlaceholder.Exists(strPlaceholder) Then
+                v = dGenericPlaceholder(strPlaceholder)
+                arrOut(i, 1) = v(0)
+                arrOut(i, 2) = ReplaceNumberPlaceholders(v(1), strSection, strLessonNumber, strBimesterNumber, strProjectNumber)
+                arrOut(i, 3) = ReplaceNumberPlaceholders(v(2), strSection, strLessonNumber, strBimesterNumber, strProjectNumber)
+            ElseIf ParseProjectActivity(strActivity, projNum, actNum) Then
+                strTBoxKey = CStr(strSection) & "|" & projNum & "|" & actNum
+                If dTBox.Exists(strTBoxKey) Then
+                    v = dTBox(strTBoxKey)
+                    arrOut(i, 1) = v(0)
+                    arrOut(i, 2) = ReplaceNumberPlaceholders(v(1), strSection, strLessonNumber, strBimesterNumber, strProjectNumber)
+                    arrOut(i, 3) = ReplaceNumberPlaceholders(v(2), strSection, strLessonNumber, strBimesterNumber, strProjectNumber)
                 End If
             End If
         End If
     Next i
+
+    tblMaster.DataBodyRange.Columns(3).Resize(nRows, 3).Value = arrOut
 End Sub
 
 Function GetNumbers(strInput As String) As Variant
