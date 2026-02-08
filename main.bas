@@ -1437,7 +1437,7 @@ Sub GenerateWeeklyPlans(ByVal intStartWeek As Integer, ByVal intEndWeek As Integ
                 
                 ' Replace "XX" with the section and "W--" with the week number in the document name
                 newDocName = Replace(templateName, "XX", sec.value)
-                newDocName = Replace(newDocName, "W--", "W" & intWeek)
+                newDocName = Replace(newDocName, "W--", "W" & Format(intWeek, "00"))
                 fullSavePath = folderPath & "\" & newDocName
                 GWP_Log "newDocName=" & newDocName & " fullSavePath=" & fullSavePath
                 
