@@ -282,7 +282,7 @@ Public Sub GenerateRawGradebooks(ByVal strBimester As String, Optional ByVal gra
             If Not integrativeActivityWb Is Nothing Then
                 ' Track integrative activity workbook for cleanup
                 globalOpenedWorkbooks.Add integrativeActivityWb.FullName
-                Log logLines, "Added integrative activity workbook to global tracking (count=" & globalOpenedWorkbooks.Count & ")"
+                Log logLines, "Added integrative activity workbook to global tracking (count=" & globalOpenedWorkbooks.count & ")"
             End If
             On Error GoTo ErrHandler
         End If
@@ -471,8 +471,8 @@ Private Sub ReplaceFormulasWithValues(ByVal wb As Object, ByRef logLines As Coll
     
     
     Dim ws As Object  ' Late-bound Worksheet
-    If wb.Worksheets.Count <> 1 Then
-        Log logLines, "WARN: Expected 1 sheet, found " & wb.Worksheets.Count & " in " & wb.Name & ". Using first sheet."
+    If wb.Worksheets.count <> 1 Then
+        Log logLines, "WARN: Expected 1 sheet, found " & wb.Worksheets.count & " in " & wb.Name & ". Using first sheet."
     End If
     Set ws = wb.Worksheets(1)
     
@@ -530,8 +530,8 @@ Private Sub ClearZeroGrades(ByVal wb As Object, ByRef logLines As Collection)
     End If
     
     Dim ws As Object  ' Late-bound Worksheet
-    If wb.Worksheets.Count <> 1 Then
-        Log logLines, "WARN: Expected 1 sheet, found " & wb.Worksheets.Count & " in " & wb.Name & ". Using first sheet."
+    If wb.Worksheets.count <> 1 Then
+        Log logLines, "WARN: Expected 1 sheet, found " & wb.Worksheets.count & " in " & wb.Name & ". Using first sheet."
     End If
     Set ws = wb.Worksheets(1)
     
@@ -563,7 +563,7 @@ Private Sub ClearZeroGrades(ByVal wb As Object, ByRef logLines As Collection)
     Dim cellValue As Variant
     
     For Each cell In rng.Cells
-        cellValue = cell.Value
+        cellValue = cell.value
         ' Check if cell value evaluates to 0 (handles 0, 0.0, "0", etc.)
         If IsNumeric(cellValue) And CDbl(cellValue) = 0 Then
             cell.ClearContents
@@ -582,7 +582,7 @@ Private Sub ClearZeroGrades(ByVal wb As Object, ByRef logLines As Collection)
         
         Dim iaClearedCount As Long
         For Each cell In iaRng.Cells
-            cellValue = cell.Value
+            cellValue = cell.value
             ' Check if cell value evaluates to 0 (handles 0, 0.0, "0", etc.)
             If IsNumeric(cellValue) And CDbl(cellValue) = 0 Then
                 cell.ClearContents
@@ -598,7 +598,7 @@ End Sub
 
 Private Function GetLastNonEmptyRowInColumn(ByVal ws As Object, ByVal colNum As Long) As Long
     Dim lastCell As Object  ' Late-bound Range
-    Set lastCell = ws.Cells(ws.Rows.Count, colNum).End(xlUp)
+    Set lastCell = ws.Cells(ws.Rows.count, colNum).End(xlUp)
     If Len(lastCell.value) = 0 And lastCell.row = 1 Then
         GetLastNonEmptyRowInColumn = 0
     Else
@@ -624,7 +624,7 @@ End Function
 
 Private Function GetLastBlackBackgroundColInRow(ByVal ws As Object, ByVal rowNum As Long) As Long
     Dim lastUsedCol As Long, c As Long
-    lastUsedCol = ws.Cells(rowNum, ws.Columns.Count).End(xlToLeft).Column
+    lastUsedCol = ws.Cells(rowNum, ws.Columns.count).End(xlToLeft).column
     For c = lastUsedCol To 1 Step -1
         If IsBlackFill(ws.Cells(rowNum, c)) Then
             GetLastBlackBackgroundColInRow = c
@@ -636,10 +636,10 @@ End Function
 
 Private Function GetLastWeekColumnInRow(ByVal ws As Object, ByVal rowNum As Long) As Long
     Dim lastUsedCol As Long, c As Long
-    lastUsedCol = ws.Cells(rowNum, ws.Columns.Count).End(xlToLeft).Column
+    lastUsedCol = ws.Cells(rowNum, ws.Columns.count).End(xlToLeft).column
     For c = lastUsedCol To 1 Step -1
         Dim cellValue As String
-        cellValue = CStr(ws.Cells(rowNum, c).Value)
+        cellValue = CStr(ws.Cells(rowNum, c).value)
         If Left(Trim(cellValue), 4) = "Week" Then
             GetLastWeekColumnInRow = c
             Exit Function
@@ -651,10 +651,10 @@ End Function
 Private Function GetIntegrativeActivityColumn(ByVal ws As Object) As Long
     ' Find the column containing "Actividad Integradora" in row 2
     Dim lastUsedCol As Long, c As Long
-    lastUsedCol = ws.Cells(2, ws.Columns.Count).End(xlToLeft).Column
+    lastUsedCol = ws.Cells(2, ws.Columns.count).End(xlToLeft).column
     For c = 1 To lastUsedCol
         Dim cellValue As String
-        cellValue = CStr(ws.Cells(2, c).Value)
+        cellValue = CStr(ws.Cells(2, c).value)
         If InStr(1, cellValue, "Actividad Integradora", vbTextCompare) > 0 Then
             GetIntegrativeActivityColumn = c
             Exit Function
@@ -680,10 +680,10 @@ Private Function GetTotalColumnInIntegrativeActivity(ByVal wb As Object) As Long
     On Error GoTo 0
     
     Dim lastUsedCol As Long, c As Long
-    lastUsedCol = ws.Cells(5, ws.Columns.Count).End(xlToLeft).Column
+    lastUsedCol = ws.Cells(5, ws.Columns.count).End(xlToLeft).column
     For c = 1 To lastUsedCol
         Dim cellValue As String
-        cellValue = CStr(ws.Cells(5, c).Value)
+        cellValue = CStr(ws.Cells(5, c).value)
         If InStr(1, cellValue, "Total", vbTextCompare) > 0 Then
             GetTotalColumnInIntegrativeActivity = c
             Exit Function
@@ -701,8 +701,8 @@ Private Sub PlaceFormulaInTemplate(ByVal wb As Object, ByRef logLines As Collect
     End If
     
     Dim ws As Object  ' Late-bound Worksheet
-    If wb.Worksheets.Count <> 1 Then
-        Log logLines, "WARN: Expected 1 sheet, found " & wb.Worksheets.Count & " in " & wb.Name & ". Using first sheet."
+    If wb.Worksheets.count <> 1 Then
+        Log logLines, "WARN: Expected 1 sheet, found " & wb.Worksheets.count & " in " & wb.Name & ". Using first sheet."
     End If
     Set ws = wb.Worksheets(1)
     
@@ -744,8 +744,8 @@ Private Sub PlaceFormulaInTemplate(ByVal wb As Object, ByRef logLines As Collect
     formula = formula & """Tenth Grade_A"",""10A"","
     formula = formula & """Eleventh Grade_A"",""11A"","
     formula = formula & """Twelfth Grade_A"",""12A"","
-    formula = formula & """Ciclo Tres Development Center_A"",""DC3A""," 
-    formula = formula & """Ciclo Tres Development Center_B"",""DC3B""," 
+    formula = formula & """Ciclo Tres Development Center_A"",""DC3A"","
+    formula = formula & """Ciclo Tres Development Center_B"",""DC3B"","
     formula = formula & """Ciclo Tres Development Center_B secundaria"",""DC3B-SEC"")),"
     formula = formula & "grade_level_phrase,TEXTBEFORE(TEXTAFTER(CELL(""filename""),""Grades-""),""-Computers""),"
     formula = formula & "grade_level,name_to_grade_level(grade_level_phrase),"
@@ -764,7 +764,7 @@ Private Sub PlaceFormulaInTemplate(ByVal wb As Object, ByRef logLines As Collect
     
     ' Place formula in C5
     On Error Resume Next
-    ws.Range(FORMULA_START_CELL).Formula = formula
+    ws.Range(FORMULA_START_CELL).formula = formula
     If Err.Number <> 0 Then
         Log logLines, "ERROR: Failed to place formula in " & wb.Name & " | " & Err.Description
         Err.Clear
@@ -829,8 +829,8 @@ Private Sub PlaceIntegrativeActivityFormulaWithWorkbook(ByVal wb As Object, ByVa
     End If
     
     Dim ws As Object  ' Late-bound Worksheet
-    If wb.Worksheets.Count <> 1 Then
-        Log logLines, "WARN: Expected 1 sheet, found " & wb.Worksheets.Count & " in " & wb.Name & ". Using first sheet."
+    If wb.Worksheets.count <> 1 Then
+        Log logLines, "WARN: Expected 1 sheet, found " & wb.Worksheets.count & " in " & wb.Name & ". Using first sheet."
     End If
     Set ws = wb.Worksheets(1)
     
@@ -878,7 +878,7 @@ Private Sub PlaceIntegrativeActivityFormulaWithWorkbook(ByVal wb As Object, ByVa
     startCell = GetColumnLetter(integrativeActivityCol) & "5"
     
     On Error Resume Next
-    ws.Range(startCell).Formula = formula
+    ws.Range(startCell).formula = formula
     If Err.Number <> 0 Then
         Log logLines, "ERROR: Failed to place integrative activity formula in " & wb.Name & " | " & Err.Description
         Err.Clear
@@ -1052,15 +1052,15 @@ Private Sub CloseWorkbookSmart(ByVal wb As Workbook, ByRef logLines As Collectio
     
     ' AutoSave exists in Microsoft 365
     On Error Resume Next
-    autoSaveOn = wb.AutoSaveOn
+    autoSaveOn = wb.autoSaveOn
     On Error GoTo CleanFail
     
     Log logLines, "Cloud detection: " & isCloud & " | AutoSave: " & autoSaveOn
     
     ' Never saved -> you must SaveAs somewhere
-    If wb.Path = "" Then
+    If wb.path = "" Then
         Log logLines, "Workbook never saved, saving to temp location"
-        wb.SaveAs ThisWorkbook.Path & "\Unsaved_" & wb.Name
+        wb.SaveAs ThisWorkbook.path & "\Unsaved_" & wb.Name
         wb.Close SaveChanges:=False
         Log logLines, "Workbook saved and closed from temp location"
         Exit Sub
@@ -1116,7 +1116,7 @@ Private Sub OpenMatchingFromSubfolders(ByVal bimesterFolder As String, ByVal gra
                             openedRefs.Add fullPath
                             globalOpenedWorkbooks.Add fullPath  ' Also track globally for error cleanup
                             openedAny = True
-                            Log logLines, "Added to openedRefs (count=" & openedRefs.Count & ") and globalOpenedWorkbooks (count=" & globalOpenedWorkbooks.Count & ")"
+                            Log logLines, "Added to openedRefs (count=" & openedRefs.count & ") and globalOpenedWorkbooks (count=" & globalOpenedWorkbooks.count & ")"
                         End If
                     Else
                         ' Already open in the main instance: do NOT close later
@@ -1134,7 +1134,7 @@ End Sub
 
 Private Sub CloseOpenedWorkbooks(ByVal openedRefs As Collection, ByRef globalOpenedWorkbooks As Collection, ByRef logLines As Collection)
     Dim i As Long
-    For i = openedRefs.Count To 1 Step -1
+    For i = openedRefs.count To 1 Step -1
         Dim p As String
         p = CStr(openedRefs(i))
         Dim wb As Object
@@ -1157,7 +1157,7 @@ End Sub
 Private Sub CloseAllTrackedWorkbooks(ByVal globalOpenedWorkbooks As Collection, ByRef logLines As Collection)
     ' Close all workbooks that were opened during the process (for error cleanup)
     Dim i As Long
-    For i = globalOpenedWorkbooks.Count To 1 Step -1
+    For i = globalOpenedWorkbooks.count To 1 Step -1
         Dim p As String
         p = CStr(globalOpenedWorkbooks(i))
         Dim wb As Object
@@ -1178,7 +1178,7 @@ End Sub
 Private Sub RemoveFromGlobalCollection(ByRef globalOpenedWorkbooks As Collection, ByVal pathToRemove As String)
     ' Remove a specific path from the global collection
     Dim i As Long
-    For i = globalOpenedWorkbooks.Count To 1 Step -1
+    For i = globalOpenedWorkbooks.count To 1 Step -1
         If StrComp(CStr(globalOpenedWorkbooks(i)), pathToRemove, vbTextCompare) = 0 Then
             globalOpenedWorkbooks.Remove i
             Exit For
@@ -1465,7 +1465,7 @@ Private Sub DumpLogToSheet(ByVal logLines As Collection, ByVal sheetName As Stri
     If Not ws Is Nothing Then
         ws.Cells.Clear
     Else
-        Set ws = ThisWorkbook.Worksheets.Add(after:=ThisWorkbook.Worksheets(ThisWorkbook.Worksheets.Count))
+        Set ws = ThisWorkbook.Worksheets.Add(after:=ThisWorkbook.Worksheets(ThisWorkbook.Worksheets.count))
         If Err.Number <> 0 Then
             ' If we can't create the worksheet, exit the function
             Exit Sub
@@ -1483,7 +1483,7 @@ Private Sub DumpLogToSheet(ByVal logLines As Collection, ByVal sheetName As Stri
     ws.Range("A1:B1").Font.Bold = True
     
     Dim i As Long
-    For i = 1 To logLines.Count
+    For i = 1 To logLines.count
         ws.Cells(i + 1, 1).value = Split(logLines(i), "  ")(0)
         ws.Cells(i + 1, 2).value = Mid$(logLines(i), Len(Split(logLines(i), "  ")(0)) + 3)
     Next i
@@ -1694,7 +1694,7 @@ Public Sub TestIntegrativeActivityOnly(ByVal strBimester As String, Optional ByV
             If Not integrativeActivityWb Is Nothing Then
                 ' Track integrative activity workbook for cleanup
                 globalOpenedWorkbooks.Add integrativeActivityWb.FullName
-                Log logLines, "TEST MODE: Added integrative activity workbook to global tracking (count=" & globalOpenedWorkbooks.Count & ")"
+                Log logLines, "TEST MODE: Added integrative activity workbook to global tracking (count=" & globalOpenedWorkbooks.count & ")"
             End If
             On Error GoTo ErrHandler
         End If
@@ -1874,8 +1874,8 @@ Private Sub ReplaceIntegrativeActivityFormulasWithValues(ByVal wb As Object, ByR
     End If
     
     Dim ws As Object  ' Late-bound Worksheet
-    If wb.Worksheets.Count <> 1 Then
-        Log logLines, "WARN: Expected 1 sheet, found " & wb.Worksheets.Count & " in " & wb.Name & ". Using first sheet."
+    If wb.Worksheets.count <> 1 Then
+        Log logLines, "WARN: Expected 1 sheet, found " & wb.Worksheets.count & " in " & wb.Name & ". Using first sheet."
     End If
     Set ws = wb.Worksheets(1)
     
@@ -1928,8 +1928,8 @@ Private Sub ClearIntegrativeActivityZeroGrades(ByVal wb As Object, ByRef logLine
     End If
     
     Dim ws As Object  ' Late-bound Worksheet
-    If wb.Worksheets.Count <> 1 Then
-        Log logLines, "WARN: Expected 1 sheet, found " & wb.Worksheets.Count & " in " & wb.Name & ". Using first sheet."
+    If wb.Worksheets.count <> 1 Then
+        Log logLines, "WARN: Expected 1 sheet, found " & wb.Worksheets.count & " in " & wb.Name & ". Using first sheet."
     End If
     Set ws = wb.Worksheets(1)
     
@@ -1957,7 +1957,7 @@ Private Sub ClearIntegrativeActivityZeroGrades(ByVal wb As Object, ByRef logLine
     Dim cellValue As Variant
     
     For Each cell In rng.Cells
-        cellValue = cell.Value
+        cellValue = cell.value
         ' Check if cell value evaluates to 0 (handles 0, 0.0, "0", etc.)
         If IsNumeric(cellValue) And CDbl(cellValue) = 0 Then
             cell.ClearContents

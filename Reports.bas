@@ -5,7 +5,7 @@ Option Explicit
 ' GenerateAttendanceReport
 ' ===========================
 ' Generates an attendance report from weekly gradebooks
-' 
+'
 ' Parameters:
 ' - strBimester: The bimester folder name (e.g., "B1", "B2", "B3", "B4")
 '
@@ -161,8 +161,8 @@ Public Sub GenerateAttendanceReport(ByVal strBimester As String)
     Log logLines, "Processed " & processedFiles & " weekly gradebook files"
     
     ' Populate attendance table
-    Log logLines, "Populating attendance table with " & attendanceData.Count & " records"
-    If attendanceData.Count > 0 Then
+    Log logLines, "Populating attendance table with " & attendanceData.count & " records"
+    If attendanceData.count > 0 Then
         PopulateAttendanceTable tblAttendance, attendanceData, logLines
     Else
         Log logLines, "WARNING: No attendance data found. Check the log above for issues with file processing."
@@ -177,7 +177,7 @@ Public Sub GenerateAttendanceReport(ByVal strBimester As String)
     End If
     
     Log logLines, "=== Attendance Report Generation Complete ==="
-    Log logLines, "Total records: " & attendanceData.Count
+    Log logLines, "Total records: " & attendanceData.count
     
 Cleanup:
     ' Restore Excel settings
@@ -224,12 +224,12 @@ Private Function CreateAttendanceTable(ByVal ws As Worksheet) As ListObject
     Dim rng As Range
     
     ' Set up headers
-    ws.Cells(1, 1).Value = "Nombre"
-    ws.Cells(1, 2).Value = "Grado"
-    ws.Cells(1, 3).Value = "Semana de inasistencia"
-    ws.Cells(1, 4).Value = "Clase de inasistencia"
-    ws.Cells(1, 5).Value = "Tipo de inasistencia"
-    ws.Cells(1, 6).Value = "Actividad de clase"
+    ws.Cells(1, 1).value = "Nombre"
+    ws.Cells(1, 2).value = "Grado"
+    ws.Cells(1, 3).value = "Semana de inasistencia"
+    ws.Cells(1, 4).value = "Clase de inasistencia"
+    ws.Cells(1, 5).value = "Tipo de inasistencia"
+    ws.Cells(1, 6).value = "Actividad de clase"
     
     ' Create listobject
     Set rng = ws.Range("A1:F1")
@@ -325,7 +325,7 @@ Private Sub ExtractAttendanceFromFile(ByVal filePath As String, ByRef attendance
                 Dim headers As Collection
                 Set headers = GetColumnHeaders(ws)
                 Log logLines, "Available columns in '" & ws.Name & "':"
-                For i = 1 To headers.Count
+                For i = 1 To headers.count
                     Log logLines, "  Column " & i & ": '" & headers(i) & "'"
                 Next i
                 
@@ -427,7 +427,7 @@ Private Function GetClassActivity(ByVal ws As Worksheet) As String
         Set foundCell = rng.Find(What:=term, LookIn:=xlValues, LookAt:=xlWhole, MatchCase:=False)
         If Not foundCell Is Nothing Then
             ' Get the cell to the right of the found cell
-            GetClassActivity = Trim(foundCell.Offset(0, 1).Value)
+            GetClassActivity = Trim(foundCell.Offset(0, 1).value)
             Exit Function
         End If
     Next term
@@ -462,10 +462,10 @@ Private Function GetTableRange(ByVal ws As Worksheet) As Range
     End If
     
     ' Find last row with data in Nombre column
-    lastDataRow = GetLastDataRow(ws, nombreStart.Column)
+    lastDataRow = GetLastDataRow(ws, nombreStart.column)
     
     ' Create table range from Nombre column to Observaciones column, from header row to last data row
-    Set tableRange = ws.Range(nombreStart.Offset(1, 0), ws.Cells(lastDataRow, obsEnd.Column))
+    Set tableRange = ws.Range(nombreStart.Offset(1, 0), ws.Cells(lastDataRow, obsEnd.column))
     Set GetTableRange = tableRange
 End Function
 
@@ -504,8 +504,8 @@ Private Function GetColumnIndex(ByVal ws As Worksheet, ByVal columnName As Strin
     End If
     
     ' Search through header cells
-    For i = 1 To headerRow.Columns.Count
-        If Trim(headerRow.Cells(1, i).Value) = columnName Then
+    For i = 1 To headerRow.Columns.count
+        If Trim(headerRow.Cells(1, i).value) = columnName Then
             GetColumnIndex = i
             Exit Function
         End If
@@ -524,7 +524,7 @@ Private Function GetDataRowCount(ByVal ws As Worksheet) As Long
         Exit Function
     End If
     
-    GetDataRowCount = tableRange.Rows.Count
+    GetDataRowCount = tableRange.Rows.count
 End Function
 
 Private Function GetCellValue(ByVal ws As Worksheet, ByVal rowIndex As Long, ByVal colIndex As Long) As String
@@ -544,8 +544,8 @@ Private Function GetCellValue(ByVal ws As Worksheet, ByVal rowIndex As Long, ByV
     Dim absRow As Long
     Dim absCol As Long
     
-    absRow = nombreStart.Row + rowIndex ' Skip header row
-    absCol = nombreStart.Column + colIndex - 1 ' Adjust for relative column position
+    absRow = nombreStart.row + rowIndex ' Skip header row
+    absCol = nombreStart.column + colIndex - 1 ' Adjust for relative column position
     
     GetCellValue = Trim(GetActualValue(ws.Cells(absRow, absCol)))
 End Function
@@ -565,8 +565,8 @@ Private Function GetColumnHeaders(ByVal ws As Worksheet) As Collection
     End If
     
     ' Add each header to collection
-    For i = 1 To headerRow.Columns.Count
-        headers.Add Trim(headerRow.Cells(1, i).Value)
+    For i = 1 To headerRow.Columns.count
+        headers.Add Trim(headerRow.Cells(1, i).value)
     Next i
     
     Set GetColumnHeaders = headers
@@ -579,7 +579,7 @@ Private Function GetLastDataRow(ByVal ws As Worksheet, ByVal column As Long) As 
     Dim currentRow As Long
     Dim currentValue As Variant
     
-    lastRow = ws.Cells(ws.Rows.Count, column).End(xlUp).Row
+    lastRow = ws.Cells(ws.Rows.count, column).End(xlUp).row
     
     ' Work backwards to find the actual last data row
     For currentRow = lastRow To 2 Step -1 ' Start from bottom, go up to row 2 (skip header)
@@ -598,16 +598,16 @@ End Function
 
 Private Function GetActualValue(ByVal cell As Range) As Variant
     ' Gets the actual value from a cell, handling cases where Value returns 0 for empty cells
-    If cell.Text = "" Then
+    If cell.text = "" Then
         GetActualValue = ""
-    ElseIf IsNumeric(cell.Value) And cell.Value = 0 And cell.Text = "0" Then
+    ElseIf IsNumeric(cell.value) And cell.value = 0 And cell.text = "0" Then
         ' This is likely a real zero value
-        GetActualValue = cell.Value
-    ElseIf IsNumeric(cell.Value) And cell.Value = 0 And cell.Text = "" Then
+        GetActualValue = cell.value
+    ElseIf IsNumeric(cell.value) And cell.value = 0 And cell.text = "" Then
         ' This is an empty cell that Excel returns as 0
         GetActualValue = ""
     Else
-        GetActualValue = cell.Value
+        GetActualValue = cell.value
     End If
 End Function
 
@@ -629,22 +629,22 @@ Private Sub PopulateAttendanceTable(ByVal tbl As ListObject, ByVal attendanceDat
     Dim rowData As Collection
     Dim newRow As ListRow
     
-    For i = 1 To attendanceData.Count
+    For i = 1 To attendanceData.count
         Set rowData = attendanceData(i)
         
         ' Add new row to table
         Set newRow = tbl.ListRows.Add
         
         ' Populate row data
-        newRow.Range.Cells(1, 1).Value = rowData(1) ' Nombre
-        newRow.Range.Cells(1, 2).Value = rowData(2) ' Grado
-        newRow.Range.Cells(1, 3).Value = rowData(3) ' Semana de inasistencia
-        newRow.Range.Cells(1, 4).Value = rowData(4) ' Clase de inasistencia
-        newRow.Range.Cells(1, 5).Value = rowData(5) ' Tipo de inasistencia
-        newRow.Range.Cells(1, 6).Value = rowData(6) ' Actividad de clase
+        newRow.Range.Cells(1, 1).value = rowData(1) ' Nombre
+        newRow.Range.Cells(1, 2).value = rowData(2) ' Grado
+        newRow.Range.Cells(1, 3).value = rowData(3) ' Semana de inasistencia
+        newRow.Range.Cells(1, 4).value = rowData(4) ' Clase de inasistencia
+        newRow.Range.Cells(1, 5).value = rowData(5) ' Tipo de inasistencia
+        newRow.Range.Cells(1, 6).value = rowData(6) ' Actividad de clase
     Next i
     
-    Log logLines, "Added " & attendanceData.Count & " rows to attendance table"
+    Log logLines, "Added " & attendanceData.count & " rows to attendance table"
 End Sub
 
 Private Sub LogToReportsSheet(ByVal logLines As Collection)
@@ -656,25 +656,25 @@ Private Sub LogToReportsSheet(ByVal logLines As Collection)
     ws.Cells.Clear
     
     ' Add headers
-    ws.Cells(1, 1).Value = "Timestamp"
-    ws.Cells(1, 2).Value = "Log Entry"
+    ws.Cells(1, 1).value = "Timestamp"
+    ws.Cells(1, 2).value = "Log Entry"
     ws.Range("A1:B1").Font.Bold = True
     
     ' Check if logLines collection is valid and has items
     If logLines Is Nothing Then
-        ws.Cells(2, 1).Value = EscapeFormula("Error")
-        ws.Cells(2, 2).Value = EscapeFormula("LogLines collection is Nothing")
+        ws.Cells(2, 1).value = EscapeFormula("Error")
+        ws.Cells(2, 2).value = EscapeFormula("LogLines collection is Nothing")
         Exit Sub
     End If
     
-    If logLines.Count = 0 Then
-        ws.Cells(2, 1).Value = EscapeFormula("Info")
-        ws.Cells(2, 2).Value = EscapeFormula("No log entries found")
+    If logLines.count = 0 Then
+        ws.Cells(2, 1).value = EscapeFormula("Info")
+        ws.Cells(2, 2).value = EscapeFormula("No log entries found")
         Exit Sub
     End If
     
     ' Add log entries with error handling
-    For i = 1 To logLines.Count
+    For i = 1 To logLines.count
         On Error Resume Next
         Dim logEntry As String
         Dim timestamp As String
@@ -683,8 +683,8 @@ Private Sub LogToReportsSheet(ByVal logLines As Collection)
         ' Safely get log entry from collection
         logEntry = logLines(i)
         If Err.Number <> 0 Then
-            ws.Cells(i + 1, 1).Value = EscapeFormula("Error")
-            ws.Cells(i + 1, 2).Value = EscapeFormula("Could not access log entry " & i & ": " & Err.Description)
+            ws.Cells(i + 1, 1).value = EscapeFormula("Error")
+            ws.Cells(i + 1, 2).value = EscapeFormula("Could not access log entry " & i & ": " & Err.Description)
             Err.Clear
             GoTo NextLogEntry
         End If
@@ -718,8 +718,8 @@ Private Sub LogToReportsSheet(ByVal logLines As Collection)
         End If
         
         ' Safely write to worksheet - escape formulas by adding single quote
-        ws.Cells(i + 1, 1).Value = EscapeFormula(timestamp)
-        ws.Cells(i + 1, 2).Value = EscapeFormula(message)
+        ws.Cells(i + 1, 1).value = EscapeFormula(timestamp)
+        ws.Cells(i + 1, 2).value = EscapeFormula(message)
         
 NextLogEntry:
         On Error GoTo 0

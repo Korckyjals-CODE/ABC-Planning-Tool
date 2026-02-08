@@ -127,7 +127,7 @@ Public Sub TestSingleGradebook(ByVal strBimester As String)
     Set openedRefs = New Collection  ' Collection of paths we opened (to close later)
     Log logLines, "DEBUG: About to open matching files for grade: " & strGradeLevel
     OpenMatchingFromSubfolders xlApp, xlAppCreated, strBimesterFolderURL, strGradeLevel, openedRefs, globalOpenedWorkbooks, logLines
-    Log logLines, "DEBUG: Opened " & openedRefs.Count & " reference files"
+    Log logLines, "DEBUG: Opened " & openedRefs.count & " reference files"
     
     ' 4.4) Open the template workbook in the invisible Excel instance
     Dim wbTemplate As Object
@@ -286,11 +286,11 @@ Private Sub ReplaceFormulasWithValues(ByVal wb As Object, ByRef logLines As Coll
     End If
     
     Log logLines, "DEBUG: ReplaceFormulasWithValues - wb.Name = " & wb.Name
-    Log logLines, "DEBUG: ReplaceFormulasWithValues - wb.Worksheets.Count = " & wb.Worksheets.Count
+    Log logLines, "DEBUG: ReplaceFormulasWithValues - wb.Worksheets.Count = " & wb.Worksheets.count
     
     Dim ws As Object  ' Late-bound Worksheet
-    If wb.Worksheets.Count <> 1 Then
-        Log logLines, "WARN: Expected 1 sheet, found " & wb.Worksheets.Count & " in " & wb.Name & ". Using first sheet."
+    If wb.Worksheets.count <> 1 Then
+        Log logLines, "WARN: Expected 1 sheet, found " & wb.Worksheets.count & " in " & wb.Name & ". Using first sheet."
     End If
     Set ws = wb.Worksheets(1)
     
@@ -336,11 +336,11 @@ Private Sub PlaceFormulaInTemplate(ByVal wb As Object, ByVal xlApp As Object, By
     End If
     
     Log logLines, "DEBUG: PlaceFormulaInTemplate - wb.Name = " & wb.Name
-    Log logLines, "DEBUG: PlaceFormulaInTemplate - wb.Worksheets.Count = " & wb.Worksheets.Count
+    Log logLines, "DEBUG: PlaceFormulaInTemplate - wb.Worksheets.Count = " & wb.Worksheets.count
     
     Dim ws As Object  ' Late-bound Worksheet
-    If wb.Worksheets.Count <> 1 Then
-        Log logLines, "WARN: Expected 1 sheet, found " & wb.Worksheets.Count & " in " & wb.Name & ". Using first sheet."
+    If wb.Worksheets.count <> 1 Then
+        Log logLines, "WARN: Expected 1 sheet, found " & wb.Worksheets.count & " in " & wb.Name & ". Using first sheet."
     End If
     Set ws = wb.Worksheets(1)
     
@@ -407,7 +407,7 @@ Private Sub PlaceFormulaInTemplate(ByVal wb As Object, ByVal xlApp As Object, By
     
     ' Place formula in C5
     On Error Resume Next
-    ws.Range("C5").Formula = formula
+    ws.Range("C5").formula = formula
     If Err.Number <> 0 Then
         Log logLines, "ERROR placing formula in " & wb.Name & ": " & Err.Description
         Err.Clear
@@ -444,7 +444,7 @@ End Sub
 
 Private Function GetLastNonEmptyRowInColumn(ByVal ws As Object, ByVal colNum As Long) As Long
     Dim lastCell As Object  ' Late-bound Range
-    Set lastCell = ws.Cells(ws.Rows.Count, colNum).End(xlUp)
+    Set lastCell = ws.Cells(ws.Rows.count, colNum).End(xlUp)
     If Len(lastCell.value) = 0 And lastCell.row = 1 Then
         GetLastNonEmptyRowInColumn = 0
     Else
@@ -470,7 +470,7 @@ End Function
 
 Private Function GetLastBlackBackgroundColInRow(ByVal ws As Object, ByVal rowNum As Long) As Long
     Dim lastUsedCol As Long, c As Long
-    lastUsedCol = ws.Cells(rowNum, ws.Columns.Count).End(xlToLeft).Column
+    lastUsedCol = ws.Cells(rowNum, ws.Columns.count).End(xlToLeft).column
     For c = lastUsedCol To 1 Step -1
         If IsBlackFill(ws.Cells(rowNum, c)) Then
             GetLastBlackBackgroundColInRow = c
@@ -482,10 +482,10 @@ End Function
 
 Private Function GetLastWeekColumnInRow(ByVal ws As Object, ByVal rowNum As Long) As Long
     Dim lastUsedCol As Long, c As Long
-    lastUsedCol = ws.Cells(rowNum, ws.Columns.Count).End(xlToLeft).Column
+    lastUsedCol = ws.Cells(rowNum, ws.Columns.count).End(xlToLeft).column
     For c = lastUsedCol To 1 Step -1
         Dim cellValue As String
-        cellValue = CStr(ws.Cells(rowNum, c).Value)
+        cellValue = CStr(ws.Cells(rowNum, c).value)
         If Left(Trim(cellValue), 4) = "Week" Then
             GetLastWeekColumnInRow = c
             Exit Function
@@ -661,7 +661,7 @@ Private Sub DumpLogToSheet(ByVal logLines As Collection, ByVal sheetName As Stri
     If Not ws Is Nothing Then
         ws.Cells.Clear
     Else
-        Set ws = ThisWorkbook.Worksheets.Add(after:=ThisWorkbook.Worksheets(ThisWorkbook.Worksheets.Count))
+        Set ws = ThisWorkbook.Worksheets.Add(after:=ThisWorkbook.Worksheets(ThisWorkbook.Worksheets.count))
         ws.Name = sheetName
     End If
     On Error GoTo 0
@@ -671,7 +671,7 @@ Private Sub DumpLogToSheet(ByVal logLines As Collection, ByVal sheetName As Stri
     ws.Range("A1:B1").Font.Bold = True
     
     Dim i As Long
-    For i = 1 To logLines.Count
+    For i = 1 To logLines.count
         ws.Cells(i + 1, 1).value = Split(logLines(i), "  ")(0)
         ws.Cells(i + 1, 2).value = Mid$(logLines(i), Len(Split(logLines(i), "  ")(0)) + 3)
     Next i
@@ -735,8 +735,8 @@ End Sub
 
 Private Sub CloseOpenedWorkbooks(ByVal xlApp As Object, ByVal xlAppCreated As Boolean, ByVal openedRefs As Collection, ByRef globalOpenedWorkbooks As Collection, ByRef logLines As Collection)
     Dim i As Long
-    Log logLines, "DEBUG: Starting to close " & openedRefs.Count & " data files"
-    For i = openedRefs.Count To 1 Step -1
+    Log logLines, "DEBUG: Starting to close " & openedRefs.count & " data files"
+    For i = openedRefs.count To 1 Step -1
         Dim p As String
         p = CStr(openedRefs(i))
         Log logLines, "DEBUG: Attempting to close data file: " & p
@@ -778,7 +778,7 @@ End Sub
 Private Sub CloseAllTrackedWorkbooks(ByVal xlApp As Object, ByVal xlAppCreated As Boolean, ByVal globalOpenedWorkbooks As Collection, ByRef logLines As Collection)
     ' Close all workbooks that were opened during the process (for error cleanup)
     Dim i As Long
-    For i = globalOpenedWorkbooks.Count To 1 Step -1
+    For i = globalOpenedWorkbooks.count To 1 Step -1
         Dim p As String
         p = CStr(globalOpenedWorkbooks(i))
         Dim wb As Object
@@ -817,7 +817,7 @@ End Sub
 Private Sub RemoveFromGlobalCollection(ByRef globalOpenedWorkbooks As Collection, ByVal pathToRemove As String)
     ' Remove a specific path from the global collection
     Dim i As Long
-    For i = globalOpenedWorkbooks.Count To 1 Step -1
+    For i = globalOpenedWorkbooks.count To 1 Step -1
         If StrComp(CStr(globalOpenedWorkbooks(i)), pathToRemove, vbTextCompare) = 0 Then
             globalOpenedWorkbooks.Remove i
             Exit For

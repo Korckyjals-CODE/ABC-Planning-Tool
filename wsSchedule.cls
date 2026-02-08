@@ -23,7 +23,7 @@ Private Sub Worksheet_SelectionChange(ByVal Target As Range)
     ' Check if the selection is within the tblSchedule data range
     If Not Intersect(Target, tblSchedule.DataBodyRange) Is Nothing Then
         Set rngSelected = Target.Cells(1, 1) ' Handle multi-cell selection
-        strCellValue = CStr(rngSelected.Value)
+        strCellValue = CStr(rngSelected.value)
         
         ' Show document icon only if cell content matches grade level pattern
         If IsGradeLevel(strCellValue) Then
@@ -87,14 +87,14 @@ Private Sub ShowDocumentIcon(ByVal rngCell As Range)
     With shpIcon
         .Name = "DocIcon_" & rngCell.Address(False, False)
         .Fill.ForeColor.RGB = RGB(255, 255, 255) ' White background
-        .Line.ForeColor.RGB = RGB(0, 0, 0) ' Black border
-        .Line.Weight = 1
+        .line.ForeColor.RGB = RGB(0, 0, 0) ' Black border
+        .line.Weight = 1
         .OnAction = "DocumentIcon_Click" ' Assign click event
     End With
     
     ' Add text to make it look like a document
     With shpIcon.TextFrame
-        .Characters.Text = "📄"
+        .Characters.text = "📄"
         .Characters.Font.Size = 10
         .Characters.Font.Name = "Segoe UI Emoji"
         .HorizontalAlignment = xlCenter
@@ -123,7 +123,7 @@ Private Sub HideAllDocumentIcons()
     Dim i As Integer
     
     ' Loop backwards through shapes to avoid index issues when deleting
-    For i = Me.Shapes.Count To 1 Step -1
+    For i = Me.Shapes.count To 1 Step -1
         Set shp = Me.Shapes(i)
         If shp.Name Like "DocIcon_*" Then
             shp.Delete
@@ -136,3 +136,4 @@ Public Sub DocumentIcon_Click()
     ' This will be replaced with actual functionality later
     MsgBox "Document icon clicked! This is a placeholder message.", vbInformation, "Document Icon"
 End Sub
+

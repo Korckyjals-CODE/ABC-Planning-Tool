@@ -105,8 +105,8 @@ Do While rngCell.value <> ""
         Set ws = GetWorksheetByCodename(strWsCodename)
         For Each tbl In ws.ListObjects
             strGrade = tbl.HeaderRowRange(1, 2).Offset(-1, 0)
-            intLastRowIndex = tbl.ListRows.Count
-            intLastColIndex = tbl.ListColumns.Count
+            intLastRowIndex = tbl.ListRows.count
+            intLastColIndex = tbl.ListColumns.count
             strPlannedActivity = tbl.ListColumns(2).DataBodyRange(intLastRowIndex)
             datPlannedDate = tbl.ListColumns(intLastColIndex - 1).DataBodyRange(intLastRowIndex)
             If datPlannedDate = datTargetDate Then
@@ -247,7 +247,7 @@ Function GetProjectNumberForUnitPlan(ByVal strBimester As String, ByVal strSecti
     regex.Global = False
 
     ' Loop through the rows in the table
-    For i = 1 To tbl.ListRows.Count
+    For i = 1 To tbl.ListRows.count
         With tbl.ListRows(i).Range
             If Trim(.Cells(1, 2).value) = strBimester And Trim(.Cells(1, 1).value) = strSection Then
                 cellValue = .Cells(1, 3).value ' Column 3 has the project title
@@ -811,7 +811,7 @@ Sub GenerateYearlyPlans()
         
         With wordDoc
             ' Fill in the fields
-            For i = 1 To .ContentControls.Count
+            For i = 1 To .ContentControls.count
                 Select Case .ContentControls(i).Range.text
                     Case "Section"
                         .ContentControls(i).Range.text = sec.value
@@ -821,7 +821,7 @@ Sub GenerateYearlyPlans()
             Counter = 1
             For Each sec2 In tbl.ListColumns(2).DataBodyRange
                 If sec2.value = sec.value Then
-                    For j = 1 To .ContentControls.Count
+                    For j = 1 To .ContentControls.count
                         Select Case .ContentControls(j).Range.text
                             Case "Bimester_" & Trim(str(Counter))
                                 strBimester = sec2.Offset(0, -1).value
@@ -846,7 +846,7 @@ Sub GenerateYearlyPlans()
             
             For Each sec3 In tblClassStatistics.ListColumns(1).DataBodyRange
                 If sec3.value = sec.value Then
-                    For j = 1 To .ContentControls.Count
+                    For j = 1 To .ContentControls.count
                         Select Case Left(.ContentControls(j).Range.text, 1)
                             Case "D"
                                 extracted_text = Mid(.ContentControls(j).Range.text, 2, Len(.ContentControls(j).Range.text) - 1)
@@ -878,7 +878,7 @@ Sub GenerateYearlyPlans()
             
             For Each sec4 In tblClassesPerSectionPerWeek.ListColumns(1).DataBodyRange
                 If sec4.value = sec.value Then
-                    For j = 1 To .ContentControls.Count
+                    For j = 1 To .ContentControls.count
                         Select Case .ContentControls(j).Range.text
                             Case "NW"
                                 number_classes_per_week = sec4.Offset(0, 1).value
@@ -993,7 +993,7 @@ Sub GenerateUnitPlans()
                     
                     With wordDoc
                         ' Fill placeholders
-                        For j = 1 To .ContentControls.Count
+                        For j = 1 To .ContentControls.count
                             Select Case .ContentControls(j).Range.text
                                 Case "YY BIMONTHLY"
                                     .ContentControls(j).Range.text = strBimonthly
@@ -1135,7 +1135,7 @@ Sub GenerateWeeklyPlans(ByVal intWeekNumber As Integer)
             
             With wordDoc
                 ' Fill in the fields
-                For i = .ContentControls.Count To 1 Step -1
+                For i = .ContentControls.count To 1 Step -1
                     Select Case .ContentControls(i).Range.text
                         Case "<section>"
                             .ContentControls(i).Range.text = sec.value
@@ -1221,7 +1221,7 @@ Sub ReplacePlaceholderWithNumberedListInCollection(ByVal doc As word.Document, B
     cc.Range.text = ""
     
     ' Loop through the collection and insert each activity as a numbered item
-    For i = 1 To colActivities.Count
+    For i = 1 To colActivities.count
         ' Add a new paragraph within the content control range
         Set paragraphRange = cc.Range.Paragraphs.Add().Range
         paragraphRange.text = colActivities(i)
@@ -1292,7 +1292,7 @@ tblPlanningData.Range.AutoFilter 1, intWeekNumber
 tblPlanningData.Range.AutoFilter 5, strSection
 
 Set rngFoundRecord = tblPlanningData.DataBodyRange.SpecialCells(xlCellTypeVisible)
-intLastRowIndex = rngFoundRecord.Rows.Count
+intLastRowIndex = rngFoundRecord.Rows.count
 
 If intLastRowIndex > 0 Then
     dicData.Add "<start_date>", rngFoundRecord(1, GetColumnNumber(tblPlanningData, "<start_date>")).value
@@ -1394,7 +1394,7 @@ Set tblClassInterruptions = wsClassInterruptions.ListObjects("tblClassInterrupti
 
 End Function
 
-Function GetProject(Grade As String, Bimester As String) As String
+Function GetProject(grade As String, bimester As String) As String
     Dim ws As Worksheet
     Dim tbl As ListObject
     Dim projectRange As ListRows
@@ -1411,7 +1411,7 @@ Function GetProject(Grade As String, Bimester As String) As String
 
     ' Loop through each row in the table to find the matching grade and bimester
     For Each row In projectRange
-        If row.Range(1, 1).value = Grade And row.Range(1, 2).value = Bimester Then
+        If row.Range(1, 1).value = grade And row.Range(1, 2).value = bimester Then
             GetProject = row.Range(1, 3).value
             found = True
             Exit Function
@@ -1480,7 +1480,7 @@ For Each rngGrade In tblClassMinutes.ListColumns(1).DataBodyRange
         strFirstAddress = rngFoundCell.Address
         intClassMinutes = 0
         Do
-            strDay = tblSchedule.HeaderRowRange(rngFoundCell.Column - tblSchedule.HeaderRowRange(1, 1).Column + 1)
+            strDay = tblSchedule.HeaderRowRange(rngFoundCell.column - tblSchedule.HeaderRowRange(1, 1).column + 1)
             varBlock = tblSchedule.ListColumns(1).DataBodyRange(rngFoundCell.row - tblSchedule.HeaderRowRange(1, 1).row).value
             strClassMinutes = strClassMinutes & ", " & "(" & strDay & " Block " & varBlock & ")"
             intMinutes = WorksheetFunction.XLookup(varBlock, tblBlocks.ListColumns(1).DataBodyRange, tblBlocks.ListColumns(4).DataBodyRange)
@@ -1552,7 +1552,7 @@ Set tblClassesPerWeek = wsClassesPerWeek.ListObjects("tblClassesPerWeek")
 strBimester = Application.WorksheetFunction.XLookup(intWeekNumber, tblClassesPerWeek.ListColumns("Semana ABC").DataBodyRange, _
     tblClassesPerWeek.ListColumns("Bimestre").DataBodyRange)
 
-Set rowRecord = tblPlanningData.ListRows.Add(position:=tblPlanningData.ListRows.Count + 1, AlwaysInsert:=True)
+Set rowRecord = tblPlanningData.ListRows.Add(position:=tblPlanningData.ListRows.count + 1, AlwaysInsert:=True)
 
 rowRecord.Range(1, GetColumnNumber(tblPlanningData, "<week_number>")) = intWeekNumber
 rowRecord.Range(1, GetColumnNumber(tblPlanningData, "<grade>")) = strSection
@@ -1677,7 +1677,7 @@ Function GetNumberedList(colActivities As Collection) As String
     numberedList = ""
     
     ' Loop through the collection and create a numbered list
-    For i = 1 To colActivities.Count
+    For i = 1 To colActivities.count
         ' Add the numbered item followed by a line break (vbCrLf)
         numberedList = numberedList & i & ". " & colActivities(i) & vbCrLf
     Next i
@@ -1700,7 +1700,7 @@ Function CollToLineList(colActivities As Collection) As String
     strLineList = ""
     
     ' Loop through the collection and create a line list
-    For i = 1 To colActivities.Count
+    For i = 1 To colActivities.count
         ' Add the numbered item followed by a line break (vbCrLf)
         strLineList = strLineList & colActivities(i) & vbCrLf
     Next i
@@ -1718,7 +1718,7 @@ Function CollectionToLineList(ByVal col As Collection, ByVal strSeparator As Str
 Dim strOutput As String
 Dim i As Integer
 
-For i = 1 To col.Count
+For i = 1 To col.count
     strOutput = strOutput & col(i) & strSeparator
 Next
 If Right(strOutput, Len(strSeparator)) = strSeparator Then
@@ -1825,7 +1825,7 @@ Function ApplyTwoLevelAutoFilterToArray(dataRange As Range, col1Index As Long, c
     
     ' Set the filtered range (excluding headers)
     On Error Resume Next
-    Set filteredRange = dataRange.SpecialCells(xlCellTypeVisible).Resize(dataRange.Rows.Count - 1).Offset(1, 0)
+    Set filteredRange = dataRange.SpecialCells(xlCellTypeVisible).Resize(dataRange.Rows.count - 1).Offset(1, 0)
     On Error GoTo 0
     
     ' Check if there are visible cells
@@ -1836,7 +1836,7 @@ Function ApplyTwoLevelAutoFilterToArray(dataRange As Range, col1Index As Long, c
     End If
     
     ' Get the number of rows in the filtered data
-    rowCount = filteredRange.Rows.Count
+    rowCount = filteredRange.Rows.count
     
     ' Resize the result array to hold the values from the specified column
     ReDim result(1 To rowCount)
@@ -1965,7 +1965,7 @@ wsHelper.Names("Target_Week").RefersToRange.value = intTargetWeek
 Set rngBlocksInBetween = wsHelper.Range("Block_List")
 
 intTotalDuration = 0
-For i = 1 To rngBlocksInBetween.Columns.Count
+For i = 1 To rngBlocksInBetween.Columns.count
     strItemBlock = rngBlocksInBetween(1, i).value
     intItemBlockDuration = GetBlockDuration(strItemBlock)
     'Debug.Print strItemBlock, intItemBlockDuration
@@ -1987,7 +1987,7 @@ Dim strBlock As String
 Dim datDate As Date
 
 strLastActivity = ""
-For i = tblTarget.DataBodyRange.Rows.Count To 1 Step -1
+For i = tblTarget.DataBodyRange.Rows.count To 1 Step -1
     If tblTarget.ListColumns("Completed").DataBodyRange(i).value = 1 Then
         strLastActivity = tblTarget.ListColumns("Current Activity").DataBodyRange(i).Offset(-1, 1).value
         strBlock = tblTarget.ListColumns("Block").DataBodyRange(i).value
@@ -2025,7 +2025,7 @@ Dim intColNumber As Integer
 
 Set rngFound = tbl.HeaderRowRange.Find(What:=strColumnName, LookIn:=Excel.XlFindLookIn.xlValues, LookAt:=Excel.XlLookAt.xlWhole)
 If Not rngFound Is Nothing Then
-    intColNumber = rngFound.Column - tbl.HeaderRowRange(1, 1).Column + 1
+    intColNumber = rngFound.column - tbl.HeaderRowRange(1, 1).column + 1
 Else
     intColNumber = 0
 End If
@@ -2075,7 +2075,7 @@ If Not ActiveCell.ListObject Is Nothing Then
         strHeader = GetHeaderTitleFromMaster(ActiveCell)
         If strHeader = "Objective" Or strHeader = "Description" Then
             intRowIndex = ActiveCell.row - tbl.HeaderRowRange.row
-            intColIndex = tbl.ListColumns("Actividad").Range.Column - tbl.ListColumns(1).Range.Column + 1
+            intColIndex = tbl.ListColumns("Actividad").Range.column - tbl.ListColumns(1).Range.column + 1
             strActivity = tbl.DataBodyRange(intRowIndex, intColIndex).value
             r = GetProjectAndActivityNumber(strActivity)
             strProjectN = r(0)
@@ -2110,7 +2110,7 @@ Sub UpdateTblMaster(tblMaster As ListObject, tblGeneric As ListObject, tblTBox A
     tblMaster.ListColumns(5).DataBodyRange.ClearContents
 
     ' Loop through each row of column 2 in tblMaster
-    For i = 1 To tblMaster.ListRows.Count
+    For i = 1 To tblMaster.ListRows.count
         strActivity = tblMaster.DataBodyRange.Cells(i, 2).value ' Column 2
         rNumbers = GetNumbers(strActivity)
         strLessonNumber = rNumbers(1)
@@ -2153,7 +2153,7 @@ Sub UpdateTblMaster(tblMaster As ListObject, tblGeneric As ListObject, tblTBox A
                 If ParseProjectActivity(strActivity, projNum, actNum) Then
                     ' Loop through tblTBox to find matching row
                     Dim j As Long
-                    For j = 1 To tblTBox.ListRows.Count
+                    For j = 1 To tblTBox.ListRows.count
                         If tblTBox.DataBodyRange.Cells(j, 1).value = strSection Then ' Column 1
                             If tblTBox.DataBodyRange.Cells(j, 2).value = projNum Then ' Column 2
                                 If tblTBox.DataBodyRange.Cells(j, 5).value = actNum Then ' Column 5
@@ -2265,7 +2265,7 @@ Function ParseProjectActivity(strInput As String, ByRef projNum As String, ByRef
     End With
     Dim matches As Object
     Set matches = regex.Execute(strInput)
-    If matches.Count > 0 Then
+    If matches.count > 0 Then
         projNum = matches(0).SubMatches(0)
         actNum = matches(0).SubMatches(1)
         ParseProjectActivity = True
@@ -2293,7 +2293,7 @@ Dim strHeader As String
 strHeader = ""
 If Not rngCell.ListObject Is Nothing Then
     Set tbl = rngCell.ListObject
-    intColIndex = rngCell.Column - tbl.HeaderRowRange(1, 1).Column + 1
+    intColIndex = rngCell.column - tbl.HeaderRowRange(1, 1).column + 1
     strHeader = tbl.HeaderRowRange(1, intColIndex)
 End If
 
@@ -2402,14 +2402,14 @@ Set rngFiltered = GetTableVisibleRows(tbl)
 ' Get composed string
 strContent = ""
 If Not rngFiltered Is Nothing Then
-    For intRow = 1 To rngFiltered.Rows.Count
+    For intRow = 1 To rngFiltered.Rows.count
         intActivityNumber = rngFiltered.Cells(intRow, 5)
         strActivityName = rngFiltered.Cells(intRow, 6)
         strActivityDescription = rngFiltered.Cells(intRow, 8)
         If strActivityDescription <> "" Then
             strContent = strContent & "Activity " & intActivityNumber & ": " & _
                 strActivityName & vbCrLf & vbCrLf & strActivityDescription
-            If intRow < rngFiltered.Rows.Count Then
+            If intRow < rngFiltered.Rows.count Then
                 strContent = strContent & vbCrLf & vbCrLf
             End If
         Else
@@ -2452,14 +2452,14 @@ Set rngFiltered = GetTableVisibleRows(tbl)
 ' Get composed string
 strContent = ""
 If Not rngFiltered Is Nothing Then
-    For intRow = 1 To rngFiltered.Rows.Count
+    For intRow = 1 To rngFiltered.Rows.count
         intActivityNumber = rngFiltered.Cells(intRow, 5)
         strActivityName = rngFiltered.Cells(intRow, 6)
         strActivityObjective = rngFiltered.Cells(intRow, 7)
         If strActivityObjective <> "" Then
             strContent = strContent & "Activity " & intActivityNumber & ": " & _
                 strActivityObjective
-            If intRow < rngFiltered.Rows.Count Then
+            If intRow < rngFiltered.Rows.count Then
                 strContent = strContent & vbCrLf & vbCrLf
             End If
         Else
@@ -2534,7 +2534,7 @@ Sub ImportTBoxProjectData()
         .StartColour = rgbMediumSeaGreen
         'Set the colour of the bar at the end
         .EndColour = rgbGreen
-        .TotalActions = fso.GetFolder(folderPath).Files.Count 'Required
+        .TotalActions = fso.GetFolder(folderPath).Files.count 'Required
     End With
     
     'Show the Bar
@@ -2638,13 +2638,13 @@ NextFile:
     
     ' Date Start
     With tbl.ListColumns(4).DataBodyRange
-        .Formula = "=XLOOKUP(TRUE, ISNUMBER(SEARCH([@[Project Name]],tblProjects[Project])),tblProjects[Date Start])"
+        .formula = "=XLOOKUP(TRUE, ISNUMBER(SEARCH([@[Project Name]],tblProjects[Project])),tblProjects[Date Start])"
         .NumberFormat = "dd-mmm-yyyy"
     End With
     
     ' Date End
     With tbl.ListColumns(5).DataBodyRange
-        .Formula = "=XLOOKUP(TRUE, ISNUMBER(SEARCH([@[Project Name]],tblProjects[Project])),tblProjects[Date End])"
+        .formula = "=XLOOKUP(TRUE, ISNUMBER(SEARCH([@[Project Name]],tblProjects[Project])),tblProjects[Date End])"
         .NumberFormat = "dd-mmm-yyyy"
     End With
     
@@ -2687,7 +2687,7 @@ Function GetProjectNumber(ByVal strFileName As String) As Integer
 
     ' Execute the regex
     Set matches = regex.Execute(strFileName)
-    If matches.Count > 0 Then
+    If matches.count > 0 Then
         Set match = matches(0)
         GetProjectNumber = CInt(match.SubMatches(0))
     Else

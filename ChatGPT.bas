@@ -267,13 +267,13 @@ End Sub
 Sub ListUserFolders()
     Dim fso As Object
     Dim folder As Object
-    Dim subFolder As Object
+    Dim subfolder As Object
 
     Set fso = CreateObject("Scripting.FileSystemObject")
     Set folder = fso.GetFolder("C:\Users")
 
-    For Each subFolder In folder.SubFolders
-        Debug.Print subFolder.Name
+    For Each subfolder In folder.SubFolders
+        Debug.Print subfolder.Name
     Next
 End Sub
 
@@ -351,10 +351,10 @@ Sub ProcessFolderImagesWithGPT()
 
     ' Declare Sub Level Variables and Objects
     Dim Counter As Long
-    Dim TotalFiles As Long
+    Dim totalFiles As Long
 
     ' Initialize the Variables and Objects
-    TotalFiles = ContarArchivosImagen(folderPath)
+    totalFiles = ContarArchivosImagen(folderPath)
 
     ' Declare the ProgressBar Object
     Dim MyProgressbar As ProgressBar
@@ -365,7 +365,7 @@ Sub ProcessFolderImagesWithGPT()
         .ExcelStatusBar = True
         .StartColour = rgbMediumSeaGreen
         .EndColour = rgbGreen
-        .TotalActions = TotalFiles
+        .TotalActions = totalFiles
     End With
 
     MyProgressbar.ShowBar

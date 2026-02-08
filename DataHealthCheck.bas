@@ -46,11 +46,11 @@ Public Function RunHealthCheckOnWorkbook(ByVal wb As Workbook, Optional ByVal Su
     Dim originalEvents As Boolean
     Dim sheetResult As IssueSummary
     Dim workbookResult As IssueSummary
-    Dim totalIssues As Long
+    Dim TotalIssues As Long
     Dim allIssues As Collection
     
     Set allIssues = New Collection
-    totalIssues = 0
+    TotalIssues = 0
     issuesFound = False
     
     ' Store original Excel settings for performance optimization
@@ -115,11 +115,11 @@ Public Function RunHealthCheckOnWorkbook(ByVal wb As Workbook, Optional ByVal Su
             sheetResult = ValidateWeeklyGradebookBasic(ws, MyProgressbar, SuppressDialogs)
             
             ' Aggregate results
-            totalIssues = totalIssues + sheetResult.IssueCount
+            TotalIssues = TotalIssues + sheetResult.IssueCount
             
             ' Add individual issues to aggregated collection
             Dim j As Long
-            For j = 1 To sheetResult.Issues.Count
+            For j = 1 To sheetResult.Issues.count
                 allIssues.Add sheetResult.Issues(j)
             Next j
             
@@ -137,11 +137,11 @@ Public Function RunHealthCheckOnWorkbook(ByVal wb As Workbook, Optional ByVal Su
     End If
     
     ' Create aggregated workbook result
-    workbookResult.FilePath = wb.FullName
-    workbookResult.FileName = wb.Name
-    workbookResult.SheetName = ""  ' Aggregated result
+    workbookResult.filePath = wb.FullName
+    workbookResult.fileName = wb.Name
+    workbookResult.sheetName = ""  ' Aggregated result
     workbookResult.WorkbookName = wb.Name
-    workbookResult.IssueCount = totalIssues
+    workbookResult.IssueCount = TotalIssues
     Set workbookResult.Issues = allIssues
     
     RunHealthCheckOnWorkbook = workbookResult
@@ -173,7 +173,7 @@ Public Function RunHealthCheckOnFile(ByVal filePath As String, Optional ByVal Su
     Dim fileResult As IssueSummary
     Dim fso As Object
     Dim i As Long
-    Dim totalIssues As Long
+    Dim TotalIssues As Long
     Dim allIssues As Collection
     
     Set fso = CreateObject("Scripting.FileSystemObject")
@@ -196,9 +196,9 @@ Public Function RunHealthCheckOnFile(ByVal filePath As String, Optional ByVal Su
                 MsgBox "Could not access Excel application to open file: " & filePath, vbExclamation, "Health Check"
             End If
             ' Return empty result
-            fileResult.FilePath = filePath
-            fileResult.FileName = fso.GetFileName(filePath)
-            fileResult.SheetName = ""
+            fileResult.filePath = filePath
+            fileResult.fileName = fso.GetFileName(filePath)
+            fileResult.sheetName = ""
             fileResult.WorkbookName = fso.GetBaseName(filePath)
             fileResult.IssueCount = 0
             Set fileResult.Issues = New Collection
@@ -244,9 +244,9 @@ Public Function RunHealthCheckOnFile(ByVal filePath As String, Optional ByVal Su
         On Error GoTo 0
         If xlAppCreated Then xlApp.Quit
         ' Return empty result
-        fileResult.FilePath = filePath
-        fileResult.FileName = fso.GetFileName(filePath)
-        fileResult.SheetName = ""
+        fileResult.filePath = filePath
+        fileResult.fileName = fso.GetFileName(filePath)
+        fileResult.sheetName = ""
         fileResult.WorkbookName = fso.GetBaseName(filePath)
         fileResult.IssueCount = 0
         Set fileResult.Issues = New Collection
@@ -265,15 +265,15 @@ Public Function RunHealthCheckOnFile(ByVal filePath As String, Optional ByVal Su
     sheetResult = RunHealthCheckOnWorkbook(wb, SuppressDialogs, ClearReport)
     
     ' Use the aggregated workbook result directly
-    totalIssues = sheetResult.IssueCount
+    TotalIssues = sheetResult.IssueCount
     Set allIssues = sheetResult.Issues
     
     ' Create aggregated file result
-    fileResult.FilePath = filePath
-    fileResult.FileName = fso.GetFileName(filePath)
-    fileResult.SheetName = ""  ' Aggregated result, no single sheet
+    fileResult.filePath = filePath
+    fileResult.fileName = fso.GetFileName(filePath)
+    fileResult.sheetName = ""  ' Aggregated result, no single sheet
     fileResult.WorkbookName = fso.GetBaseName(filePath)
-    fileResult.IssueCount = totalIssues
+    fileResult.IssueCount = TotalIssues
     Set fileResult.Issues = allIssues
     
     ' Close workbook
@@ -343,8 +343,8 @@ Private Function IsWeeklyGradebook(ByVal ws As Worksheet) As Boolean
     hasWeeklyStructure = False
     
     ' Check for common weekly gradebook indicators
-    If ws.Cells(1, 1).Value Like "*Nota Semanal*" Or _
-       ws.Cells(1, 3).Value Like "*Nota Semanal*" Then
+    If ws.Cells(1, 1).value Like "*Nota Semanal*" Or _
+       ws.Cells(1, 3).value Like "*Nota Semanal*" Then
         hasWeeklyStructure = True
     End If
     
@@ -352,7 +352,7 @@ Private Function IsWeeklyGradebook(ByVal ws As Worksheet) As Boolean
     If Not hasWeeklyStructure Then
         Dim col As Integer
         For col = 3 To 7 ' Check columns C through G
-            If ws.Cells(3, col).Value Like "Clase *" Then
+            If ws.Cells(3, col).value Like "Clase *" Then
                 hasWeeklyStructure = True
                 Exit For
             End If
@@ -364,7 +364,7 @@ Private Function IsWeeklyGradebook(ByVal ws As Worksheet) As Boolean
         Dim hasWeights As Boolean
         hasWeights = False
         For col = 3 To 7
-            If IsNumeric(ws.Cells(2, col).Value) And ws.Cells(2, col).Value Like "*%" Then
+            If IsNumeric(ws.Cells(2, col).value) And ws.Cells(2, col).value Like "*%" Then
                 hasWeights = True
                 Exit For
             End If
@@ -380,11 +380,11 @@ End Function
 ' ===========================
 
 Private Function ValidateWeeklyGradebookBasic(ByVal ws As Worksheet, Optional ByRef MyProgressbar As ProgressBar = Nothing, Optional ByVal SuppressDialogs As Boolean = False) As IssueSummary
-    Dim issues As Collection
+    Dim Issues As Collection
     Dim result As IssueSummary
     Dim fso As Object
     
-    Set issues = New Collection
+    Set Issues = New Collection
     Set fso = CreateObject("Scripting.FileSystemObject")
     
     ' Log start of validation
@@ -394,38 +394,38 @@ Private Function ValidateWeeklyGradebookBasic(ByVal ws As Worksheet, Optional By
     If Not MyProgressbar Is Nothing Then
         MyProgressbar.StatusMessage = "Checking default grades with weights for '" & ws.Name & "'"
     End If
-    CheckDefaultGradesWithWeight ws, issues
+    CheckDefaultGradesWithWeight ws, Issues
     
     ' Check weight sum
     If Not MyProgressbar Is Nothing Then
         MyProgressbar.StatusMessage = "Checking weight sum for '" & ws.Name & "'"
     End If
-    CheckWeightSum ws, issues
+    CheckWeightSum ws, Issues
     
     ' Check for empty student rows with default grades
     If Not MyProgressbar Is Nothing Then
         MyProgressbar.StatusMessage = "Checking empty student rows for '" & ws.Name & "'"
     End If
-    CheckEmptyStudentRows ws, issues
+    CheckEmptyStudentRows ws, Issues
     
     ' Report results to health report sheet
     If Not MyProgressbar Is Nothing Then
         MyProgressbar.StatusMessage = "Generating health report for '" & ws.Name & "'"
     End If
-    ReportHealthIssuesToSheet issues, ws.Name, ws.Parent.Name, SuppressDialogs
+    ReportHealthIssuesToSheet Issues, ws.Name, ws.Parent.Name, SuppressDialogs
     
     ' Create and populate IssueSummary
-    result.FilePath = ws.Parent.FullName
-    result.FileName = ws.Parent.Name
-    result.SheetName = ws.Name
+    result.filePath = ws.Parent.FullName
+    result.fileName = ws.Parent.Name
+    result.sheetName = ws.Name
     result.WorkbookName = ws.Parent.Name
-    result.IssueCount = issues.Count
-    Set result.Issues = issues
+    result.IssueCount = Issues.count
+    Set result.Issues = Issues
     
     ValidateWeeklyGradebookBasic = result
 End Function
 
-Private Sub CheckDefaultGradesWithWeight(ByVal ws As Worksheet, ByRef issues As Collection)
+Private Sub CheckDefaultGradesWithWeight(ByVal ws As Worksheet, ByRef Issues As Collection)
     ' Check if any class has all default grades (20) but non-zero weight
     Dim classColumns As Collection
     Set classColumns = GetClassColumns(ws)
@@ -439,13 +439,13 @@ Private Sub CheckDefaultGradesWithWeight(ByVal ws As Worksheet, ByRef issues As 
             Dim issue As String
             issue = "Class " & GetClassNumber(ws, colNum) & " has all default grades (20) but weight > 0%. " & _
                    "Consider setting weight to 0% if there was no class."
-            issues.Add issue
+            Issues.Add issue
             Debug.Print "ISSUE: " & issue
         End If
     Next classCol
 End Sub
 
-Private Sub CheckWeightSum(ByVal ws As Worksheet, ByRef issues As Collection)
+Private Sub CheckWeightSum(ByVal ws As Worksheet, ByRef Issues As Collection)
     ' Check if weights sum to 100%
     Dim totalWeight As Double
     totalWeight = 0
@@ -461,12 +461,12 @@ Private Sub CheckWeightSum(ByVal ws As Worksheet, ByRef issues As Collection)
     If totalWeight <> EXPECTED_WEIGHT_SUM Then
         Dim issue As String
         issue = "Class weights sum to " & totalWeight & "% instead of " & EXPECTED_WEIGHT_SUM & "%"
-        issues.Add issue
+        Issues.Add issue
         Debug.Print "ISSUE: " & issue
     End If
 End Sub
 
-Private Sub CheckEmptyStudentRows(ByVal ws As Worksheet, ByRef issues As Collection)
+Private Sub CheckEmptyStudentRows(ByVal ws As Worksheet, ByRef Issues As Collection)
     ' Check for student rows that have default grades but no name
     Dim lastRow As Long
     lastRow = GetLastDataRow(ws)
@@ -476,7 +476,7 @@ Private Sub CheckEmptyStudentRows(ByVal ws As Worksheet, ByRef issues As Collect
         If IsEmptyStudentRow(ws, row) Then
             Dim issue As String
             issue = "Row " & row & " appears to be empty student data with default grades"
-            issues.Add issue
+            Issues.Add issue
             Debug.Print "ISSUE: " & issue
         End If
     Next row
@@ -493,7 +493,7 @@ Private Function GetClassColumns(ByVal ws As Worksheet) As Collection
     
     Dim col As Integer
     For col = 3 To 7 ' Columns C through G
-        If ws.Cells(3, col).Value Like "Clase *" Then
+        If ws.Cells(3, col).value Like "Clase *" Then
             classCols.Add col
         End If
     Next col
@@ -508,8 +508,8 @@ Private Function AllGradesEqualDefault(ByVal ws As Worksheet, ByVal colNum As In
     
     Dim row As Long
     For row = 4 To lastRow ' Assuming student data starts at row 4
-        If Not IsEmpty(ws.Cells(row, colNum).Value) Then
-            If ws.Cells(row, colNum).Value <> DEFAULT_GRADE_VALUE Then
+        If Not IsEmpty(ws.Cells(row, colNum).value) Then
+            If ws.Cells(row, colNum).value <> DEFAULT_GRADE_VALUE Then
                 AllGradesEqualDefault = False
                 Exit Function
             End If
@@ -523,7 +523,7 @@ Private Function GetClassWeight(ByVal ws As Worksheet, ByVal colNum As Integer) 
     ' Get the weight percentage for a class column
     ' Handle percentage format cells (decimal values 0-1)
     Dim cellValue As Variant
-    cellValue = ws.Cells(2, colNum).Value
+    cellValue = ws.Cells(2, colNum).value
     
     ' Check if cell contains a numeric value
     If IsNumeric(cellValue) Then
@@ -544,7 +544,7 @@ End Function
 Private Function GetClassNumber(ByVal ws As Worksheet, ByVal colNum As Integer) As String
     ' Extract class number from header (e.g., "Clase 1" -> "1")
     Dim header As String
-    header = CStr(ws.Cells(3, colNum).Value)
+    header = CStr(ws.Cells(3, colNum).value)
     
     If header Like "Clase *" Then
         GetClassNumber = Replace(header, "Clase ", "")
@@ -556,10 +556,10 @@ End Function
 Private Function GetLastDataRow(ByVal ws As Worksheet) As Long
     ' Find the last row with data in column A (student names)
     Dim lastRow As Long
-    lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+    lastRow = ws.Cells(ws.Rows.count, 1).End(xlUp).row
     
     ' If no data found, return 0
-    If lastRow = 1 And IsEmpty(ws.Cells(1, 1).Value) Then
+    If lastRow = 1 And IsEmpty(ws.Cells(1, 1).value) Then
         GetLastDataRow = 0
     Else
         GetLastDataRow = lastRow
@@ -572,7 +572,7 @@ Private Function IsEmptyStudentRow(ByVal ws As Worksheet, ByVal row As Long) As 
     Dim hasDefaultGrades As Boolean
     
     ' Check if there's a name in column A
-    hasName = Not IsEmpty(ws.Cells(row, 1).Value) And ws.Cells(row, 1).Value <> "0"
+    hasName = Not IsEmpty(ws.Cells(row, 1).value) And ws.Cells(row, 1).value <> "0"
     
     ' Check if all class columns have default grades
     hasDefaultGrades = True
@@ -581,7 +581,7 @@ Private Function IsEmptyStudentRow(ByVal ws As Worksheet, ByVal row As Long) As 
     
     Dim classCol As Variant
     For Each classCol In classColumns
-        If ws.Cells(row, CInt(classCol)).Value <> DEFAULT_GRADE_VALUE Then
+        If ws.Cells(row, CInt(classCol)).value <> DEFAULT_GRADE_VALUE Then
             hasDefaultGrades = False
             Exit For
         End If
@@ -595,7 +595,7 @@ End Function
 ' Enhanced Reporting Functions
 ' ===========================
 
-Private Sub ReportHealthIssuesToSheet(ByVal issues As Collection, ByVal sheetName As String, ByVal workbookName As String, Optional ByVal SuppressDialogs As Boolean = False)
+Private Sub ReportHealthIssuesToSheet(ByVal Issues As Collection, ByVal sheetName As String, ByVal WorkbookName As String, Optional ByVal SuppressDialogs As Boolean = False)
     ' Create or update health report sheet with detailed results
     Dim reportWs As Worksheet
     Dim screenUpdateState As Boolean
@@ -617,23 +617,23 @@ Private Sub ReportHealthIssuesToSheet(ByVal issues As Collection, ByVal sheetNam
     Set reportWs = GetOrCreateHealthReportSheet
     
     ' Add new health check entry
-    AddHealthCheckEntry reportWs, issues, sheetName, workbookName
+    AddHealthCheckEntry reportWs, Issues, sheetName, WorkbookName
     
     ' Show summary message only if not suppressed
     If Not SuppressDialogs Then
-        If issues.Count = 0 Then
+        If Issues.count = 0 Then
             MsgBox "[OK] " & sheetName & " - No health issues found!" & vbCrLf & vbCrLf & _
                    "The gradebook data appears to be healthy." & vbCrLf & vbCrLf & _
                    "Check the 'HealthReport' sheet for detailed results.", vbInformation, "Health Check Complete"
         Else
-            MsgBox "[WARNING] " & sheetName & " - " & issues.Count & " health issue(s) found!" & vbCrLf & vbCrLf & _
+            MsgBox "[WARNING] " & sheetName & " - " & Issues.count & " health issue(s) found!" & vbCrLf & vbCrLf & _
                    "Please review the 'HealthReport' sheet for detailed information." & vbCrLf & vbCrLf & _
                    "You can now work with your gradebook while keeping the report open.", vbExclamation, "Health Check Complete"
         End If
     End If
     
     ' Also log to immediate window
-    Debug.Print "Health check complete for " & sheetName & " - " & issues.Count & " issues found"
+    Debug.Print "Health check complete for " & sheetName & " - " & Issues.count & " issues found"
     
     ' Auto-fit columns for better readability
     AutoFitHealthReportColumns reportWs
@@ -751,7 +751,7 @@ Private Sub SetupHealthReportSheet(ByVal ws As Worksheet)
         .Cells.Clear
         
         ' Bulk write header data
-        .Range("A1:A10").Value = Application.Transpose(headerData)
+        .Range("A1:A10").value = Application.Transpose(headerData)
         
         ' Format main header (A1)
         With .Cells(1, 1)
@@ -782,7 +782,7 @@ Private Sub SetupHealthReportSheet(ByVal ws As Worksheet)
         .Range("F:F").ColumnWidth = 60
         
         ' Bulk write instruction data
-        .Range("A6:A10").Value = Application.Transpose(instructionData)
+        .Range("A6:A10").value = Application.Transpose(instructionData)
         
         ' Format instruction text
         Set instructionRange = .Range("A7:A10")
@@ -805,7 +805,7 @@ Private Sub SetupHealthReportSheet(ByVal ws As Worksheet)
     End With
 End Sub
 
-Private Sub AddHealthCheckEntry(ByVal reportWs As Worksheet, ByVal issues As Collection, ByVal sheetName As String, ByVal workbookName As String)
+Private Sub AddHealthCheckEntry(ByVal reportWs As Worksheet, ByVal Issues As Collection, ByVal sheetName As String, ByVal WorkbookName As String)
     ' Add a new health check entry to the report sheet (optimized)
     Dim lastRow As Long
     Dim newRow As Long
@@ -814,7 +814,7 @@ Private Sub AddHealthCheckEntry(ByVal reportWs As Worksheet, ByVal issues As Col
     Dim issueDetails As String
     Dim i As Integer
     
-    lastRow = reportWs.Cells(reportWs.Rows.Count, 1).End(xlUp).Row
+    lastRow = reportWs.Cells(reportWs.Rows.count, 1).End(xlUp).row
     
     ' Find next available row (skip instruction rows)
     If lastRow < 10 Then lastRow = 10
@@ -824,12 +824,12 @@ Private Sub AddHealthCheckEntry(ByVal reportWs As Worksheet, ByVal issues As Col
     ' Prepare data array for bulk write
     ReDim dataArray(1 To 1, 1 To 6)
     dataArray(1, 1) = Format(Now, "yyyy-mm-dd hh:mm:ss")
-    dataArray(1, 2) = workbookName
+    dataArray(1, 2) = WorkbookName
     dataArray(1, 3) = sheetName
-    dataArray(1, 5) = issues.Count
+    dataArray(1, 5) = Issues.count
     
     ' Add status and issue details
-    If issues.Count = 0 Then
+    If Issues.count = 0 Then
         dataArray(1, 4) = "[OK] HEALTHY"
         dataArray(1, 6) = "No issues detected"
     Else
@@ -837,16 +837,16 @@ Private Sub AddHealthCheckEntry(ByVal reportWs As Worksheet, ByVal issues As Col
         
         ' Build issue details string efficiently
         issueDetails = ""
-        For i = 1 To issues.Count
-            issueDetails = issueDetails & i & ". " & issues(i)
-            If i < issues.Count Then issueDetails = issueDetails & vbLf
+        For i = 1 To Issues.count
+            issueDetails = issueDetails & i & ". " & Issues(i)
+            If i < Issues.count Then issueDetails = issueDetails & vbLf
         Next i
         dataArray(1, 6) = issueDetails
     End If
     
     ' Bulk write data to worksheet
     Set dataRange = reportWs.Range("A" & newRow & ":F" & newRow)
-    dataRange.Value = dataArray
+    dataRange.value = dataArray
     
     ' Apply formatting
     With dataRange
@@ -855,7 +855,7 @@ Private Sub AddHealthCheckEntry(ByVal reportWs As Worksheet, ByVal issues As Col
         .Borders.Weight = xlThin
         
         ' Format status column
-        If issues.Count = 0 Then
+        If Issues.count = 0 Then
             .Cells(1, 4).Interior.Color = RGB(198, 239, 206)
             .Cells(1, 4).Font.Color = RGB(0, 100, 0)
         Else
@@ -877,11 +877,11 @@ End Sub
 ' Legacy Reporting Functions (for backward compatibility)
 ' ===========================
 
-Private Sub ReportHealthIssues(ByVal issues As Collection, ByVal sheetName As String)
+Private Sub ReportHealthIssues(ByVal Issues As Collection, ByVal sheetName As String)
     ' Legacy function - now redirects to sheet-based reporting
     Dim planningWb As Workbook
     Set planningWb = GetPlanningWorkbook
-    ReportHealthIssuesToSheet issues, sheetName, planningWb.Name, False  ' Show dialogs for legacy calls
+    ReportHealthIssuesToSheet Issues, sheetName, planningWb.Name, False  ' Show dialogs for legacy calls
 End Sub
 
 ' ===========================
@@ -907,10 +907,10 @@ Public Sub ShowGradebookInfo()
         Dim classColumns As Collection
         Set classColumns = GetClassColumns(ws)
         
-        Debug.Print "Class Columns Found: " & classColumns.Count
+        Debug.Print "Class Columns Found: " & classColumns.count
         Dim classCol As Variant
         For Each classCol In classColumns
-            Debug.Print "  Column " & classCol & ": " & ws.Cells(3, CInt(classCol)).Value & " (Weight: " & GetClassWeight(ws, CInt(classCol)) & "%)"
+            Debug.Print "  Column " & classCol & ": " & ws.Cells(3, CInt(classCol)).value & " (Weight: " & GetClassWeight(ws, CInt(classCol)) & "%)"
         Next classCol
         
         Debug.Print "Last Data Row: " & GetLastDataRow(ws)
@@ -936,7 +936,7 @@ Public Sub RunHealthCheckOnGeneratedGradebook(ByVal wb As Object, ByVal template
     ' Check if workbook is still accessible
     On Error Resume Next
     Dim testCount As Long
-    testCount = wb.Worksheets.Count
+    testCount = wb.Worksheets.count
     If Err.Number <> 0 Then
         Debug.Print "Health Check: Workbook no longer accessible - " & templatePath
         Err.Clear
@@ -973,18 +973,18 @@ Public Function RunHealthCheckOnFolder(ByVal folderPath As String, Optional ByVa
     Dim ext As String
     Dim folderResult As FolderSummary
     Dim fileResult As IssueSummary
-    Dim totalIssues As Long
+    Dim TotalIssues As Long
     Dim i As Long
     
     Set fso = CreateObject("Scripting.FileSystemObject")
-    totalIssues = 0
+    TotalIssues = 0
     
     If Not fso.FolderExists(folderPath) Then
         MsgBox "Folder not found: " & folderPath, vbExclamation, "Health Check"
         ' Return empty result
-        folderResult.FolderPath = folderPath
+        folderResult.folderPath = folderPath
         folderResult.FolderName = fso.GetBaseName(folderPath)
-        folderResult.TotalFiles = 0
+        folderResult.totalFiles = 0
         folderResult.TotalIssues = 0
         Set folderResult.FileSummaries = Nothing
         RunHealthCheckOnFolder = folderResult
@@ -1033,9 +1033,9 @@ Public Function RunHealthCheckOnFolder(ByVal folderPath As String, Optional ByVa
         MsgBox "Could not create Excel instance for health check: " & Err.Description, vbExclamation, "Health Check"
         Err.Clear
         ' Return empty result
-        folderResult.FolderPath = folderPath
+        folderResult.folderPath = folderPath
         folderResult.FolderName = fso.GetBaseName(folderPath)
-        folderResult.TotalFiles = 0
+        folderResult.totalFiles = 0
         folderResult.TotalIssues = 0
         Set folderResult.FileSummaries = Nothing
         RunHealthCheckOnFolder = folderResult
@@ -1082,8 +1082,8 @@ Public Function RunHealthCheckOnFolder(ByVal folderPath As String, Optional ByVa
                     MyProgressbar.NextAction "Processing '" & file.Name & "'", True
                 End If
                 Debug.Print "Processing: " & file.Name
-                fileResult = RunHealthCheckOnFile(file.Path, True, False, xlApp)  ' Use the shared hidden Excel instance
-                totalIssues = totalIssues + fileResult.IssueCount
+                fileResult = RunHealthCheckOnFile(file.path, True, False, xlApp)  ' Use the shared hidden Excel instance
+                TotalIssues = TotalIssues + fileResult.IssueCount
             End If
         End If
     Next file
@@ -1109,10 +1109,10 @@ Public Function RunHealthCheckOnFolder(ByVal folderPath As String, Optional ByVa
     Debug.Print "============================="
     
     ' Create folder result
-    folderResult.FolderPath = folderPath
+    folderResult.folderPath = folderPath
     folderResult.FolderName = fso.GetBaseName(folderPath)
-    folderResult.TotalFiles = processedCount
-    folderResult.TotalIssues = totalIssues
+    folderResult.totalFiles = processedCount
+    folderResult.TotalIssues = TotalIssues
     Set folderResult.FileSummaries = Nothing  ' Simplified - no detailed file tracking
     
     ' Show summary dialog only if not suppressed
@@ -1132,9 +1132,9 @@ Public Function RunHealthCheckOnBimester(ByVal bimesterFolderPath As String) As 
     Dim bimesterFolder As Object
     Dim weekFolder As Object
     Dim processedFolders As Integer
-    Dim totalFolders As Long
+    Dim TotalFolders As Long
     Dim totalFiles As Long
-    Dim totalIssues As Long
+    Dim TotalIssues As Long
     Dim originalScreenUpdating As Boolean
     Dim originalCalculation As XlCalculation
     Dim originalEvents As Boolean
@@ -1146,7 +1146,7 @@ Public Function RunHealthCheckOnBimester(ByVal bimesterFolderPath As String) As 
     
     Set fso = CreateObject("Scripting.FileSystemObject")
     totalFiles = 0
-    totalIssues = 0
+    TotalIssues = 0
     
     If Not fso.FolderExists(bimesterFolderPath) Then
         MsgBox "Bimester folder not found: " & bimesterFolderPath, vbExclamation, "Health Check"
@@ -1154,7 +1154,7 @@ Public Function RunHealthCheckOnBimester(ByVal bimesterFolderPath As String) As 
         bimesterResult.BimesterPath = bimesterFolderPath
         bimesterResult.BimesterName = fso.GetBaseName(bimesterFolderPath)
         bimesterResult.TotalFolders = 0
-        bimesterResult.TotalFiles = 0
+        bimesterResult.totalFiles = 0
         bimesterResult.TotalIssues = 0
         Set bimesterResult.FolderSummaries = Nothing
         RunHealthCheckOnBimester = bimesterResult
@@ -1171,7 +1171,7 @@ Public Function RunHealthCheckOnBimester(ByVal bimesterFolderPath As String) As 
     For Each weekFolder In bimesterFolder.SubFolders
         weekFolderName = weekFolder.Name
         If weekFolderName Like "W##" Then  ' Pattern: W followed by exactly 2 digits
-            totalFolders = totalFolders + 1
+            TotalFolders = TotalFolders + 1
         End If
     Next weekFolder
     
@@ -1189,7 +1189,7 @@ Public Function RunHealthCheckOnBimester(ByVal bimesterFolderPath As String) As 
     
     ' Initialize Main ProgressBar (top level - bimester)
     Dim MainProgressbar As ProgressBar
-    If totalFolders > 0 Then
+    If TotalFolders > 0 Then
         Set MainProgressbar = New ProgressBar
         
         With MainProgressbar
@@ -1197,7 +1197,7 @@ Public Function RunHealthCheckOnBimester(ByVal bimesterFolderPath As String) As 
             .ExcelStatusBar = True
             .StartColour = rgbMediumSeaGreen
             .EndColour = rgbGreen
-            .TotalActions = totalFolders
+            .TotalActions = TotalFolders
         End With
         
         ' Position the main progress bar at the top
@@ -1210,13 +1210,13 @@ Public Function RunHealthCheckOnBimester(ByVal bimesterFolderPath As String) As 
     
     Debug.Print "=== Starting Health Check on Bimester ==="
     Debug.Print "Bimester Folder: " & bimesterFolderPath
-    Debug.Print "Week folders to process: " & totalFolders
+    Debug.Print "Week folders to process: " & TotalFolders
     Debug.Print "========================================="
     
     ' Process all week folders
     For Each weekFolder In bimesterFolder.SubFolders
         weekFolderName = weekFolder.Name
-        weekFolderPath = weekFolder.Path
+        weekFolderPath = weekFolder.path
         
         If weekFolderName Like "W##" Then  ' Pattern: W followed by exactly 2 digits
             processedFolders = processedFolders + 1
@@ -1230,10 +1230,10 @@ Public Function RunHealthCheckOnBimester(ByVal bimesterFolderPath As String) As 
             folderResult = RunHealthCheckOnFolder(weekFolderPath, "", True, False)  ' Suppress dialogs and don't clear report for subprocess
             
             ' Aggregate totals
-            totalFiles = totalFiles + folderResult.TotalFiles
-            totalIssues = totalIssues + folderResult.TotalIssues
+            totalFiles = totalFiles + folderResult.totalFiles
+            TotalIssues = TotalIssues + folderResult.TotalIssues
             
-            Debug.Print "  - Files processed: " & folderResult.TotalFiles
+            Debug.Print "  - Files processed: " & folderResult.totalFiles
             Debug.Print "  - Issues found: " & folderResult.TotalIssues
         End If
     Next weekFolder
@@ -1246,15 +1246,15 @@ Public Function RunHealthCheckOnBimester(ByVal bimesterFolderPath As String) As 
     Debug.Print "=== Bimester Health Check Complete ==="
     Debug.Print "Week folders processed: " & processedFolders
     Debug.Print "Total files processed: " & totalFiles
-    Debug.Print "Total issues found: " & totalIssues
+    Debug.Print "Total issues found: " & TotalIssues
     Debug.Print "====================================="
     
     ' Create bimester result
     bimesterResult.BimesterPath = bimesterFolderPath
     bimesterResult.BimesterName = fso.GetBaseName(bimesterFolderPath)
     bimesterResult.TotalFolders = processedFolders
-    bimesterResult.TotalFiles = totalFiles
-    bimesterResult.TotalIssues = totalIssues
+    bimesterResult.totalFiles = totalFiles
+    bimesterResult.TotalIssues = TotalIssues
     Set bimesterResult.FolderSummaries = Nothing  ' Simplified - no detailed folder tracking
     
     ' Show final summary dialog
@@ -1262,10 +1262,10 @@ Public Function RunHealthCheckOnBimester(ByVal bimesterFolderPath As String) As 
     summaryMessage = "Bimester Health Check Complete!" & vbCrLf & vbCrLf & _
                     "Week folders processed: " & processedFolders & vbCrLf & _
                     "Total files processed: " & totalFiles & vbCrLf & _
-                    "Total issues found: " & totalIssues & vbCrLf & vbCrLf & _
+                    "Total issues found: " & TotalIssues & vbCrLf & vbCrLf & _
                     "Check the 'HealthReport' sheet for detailed results."
     
-    If totalIssues = 0 Then
+    If TotalIssues = 0 Then
         MsgBox summaryMessage, vbInformation, "Health Check Complete - All Good!"
     Else
         MsgBox summaryMessage, vbExclamation, "Health Check Complete - Issues Found"
@@ -1331,15 +1331,15 @@ Private Function CountIssuesInHealthReport(ByVal weekFolderName As String) As Lo
     On Error GoTo 0
     
     If Not reportWs Is Nothing Then
-        lastRow = reportWs.Cells(reportWs.Rows.Count, 1).End(xlUp).Row
+        lastRow = reportWs.Cells(reportWs.Rows.count, 1).End(xlUp).row
         
         ' Count issues for this week folder (check if sheet name contains week folder name)
         For row = 11 To lastRow  ' Data starts at row 11
-            sheetName = CStr(reportWs.Cells(row, 3).Value)  ' Sheet name is in column C
+            sheetName = CStr(reportWs.Cells(row, 3).value)  ' Sheet name is in column C
             If InStr(1, sheetName, weekFolderName, vbTextCompare) > 0 Then
                 ' Check if this row has issues (Issues Count > 0)
-                If IsNumeric(reportWs.Cells(row, 5).Value) Then
-                    count = count + CLng(reportWs.Cells(row, 5).Value)
+                If IsNumeric(reportWs.Cells(row, 5).value) Then
+                    count = count + CLng(reportWs.Cells(row, 5).value)
                 End If
             End If
         Next row
@@ -1390,7 +1390,7 @@ Public Sub ClearPreviousHealthReportEntries()
     If Not reportWs Is Nothing Then
         ' Clear all data rows but keep the header and instruction rows (rows 1-10)
         Dim lastRow As Long
-        lastRow = reportWs.Cells(reportWs.Rows.Count, 1).End(xlUp).Row
+        lastRow = reportWs.Cells(reportWs.Rows.count, 1).End(xlUp).row
         
         If lastRow > 10 Then
             ' Clear data rows (from row 11 onwards)
@@ -1399,7 +1399,7 @@ Public Sub ClearPreviousHealthReportEntries()
         End If
         
         ' Update the generation timestamp
-        reportWs.Cells(2, 1).Value = "Generated on: " & Format(Now, "yyyy-mm-dd hh:mm:ss")
+        reportWs.Cells(2, 1).value = "Generated on: " & Format(Now, "yyyy-mm-dd hh:mm:ss")
         
         ' Regenerate the instruction section with corrected characters
         SetupHealthReportSheet reportWs
@@ -1462,7 +1462,7 @@ Public Function CheckHealthReportForIssues(Optional ByVal hoursThreshold As Inte
         Exit Function
     End If
     
-    lastRow = reportWs.Cells(reportWs.Rows.Count, 1).End(xlUp).Row
+    lastRow = reportWs.Cells(reportWs.Rows.count, 1).End(xlUp).row
     hasRecentHealthCheck = False
     hasIssues = False
     
@@ -1470,12 +1470,12 @@ Public Function CheckHealthReportForIssues(Optional ByVal hoursThreshold As Inte
     For i = 11 To lastRow
         Dim timestamp As Date
         Dim status As String
-        Dim issueCount As Long
+        Dim IssueCount As Long
         
         On Error Resume Next
-        timestamp = reportWs.Cells(i, 1).Value
-        status = reportWs.Cells(i, 4).Value
-        issueCount = reportWs.Cells(i, 5).Value
+        timestamp = reportWs.Cells(i, 1).value
+        status = reportWs.Cells(i, 4).value
+        IssueCount = reportWs.Cells(i, 5).value
         On Error GoTo 0
         
         ' Check if this is a recent health check (within threshold)
@@ -1483,9 +1483,9 @@ Public Function CheckHealthReportForIssues(Optional ByVal hoursThreshold As Inte
             hasRecentHealthCheck = True
             
             ' Check if there are issues
-            If issueCount > 0 Or InStr(status, "ISSUES") > 0 Then
+            If IssueCount > 0 Or InStr(status, "ISSUES") > 0 Then
                 hasIssues = True
-                Debug.Print "Health Check Validation: Issues found in recent health check - " & reportWs.Cells(i, 2).Value & " / " & reportWs.Cells(i, 3).Value
+                Debug.Print "Health Check Validation: Issues found in recent health check - " & reportWs.Cells(i, 2).value & " / " & reportWs.Cells(i, 3).value
                 Exit For ' Found issues, no need to continue
             End If
         End If

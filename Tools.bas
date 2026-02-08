@@ -20,7 +20,7 @@ Sub OpenRichTextEditor()
     MsgBox "Please enter your rich text in the Word document, then close it to continue.", vbInformation, "Rich Text Editor"
     
     ' Wait until the document is closed
-    Do While wordDoc.Saved = False Or wordApp.Documents.Count > 0
+    Do While wordDoc.Saved = False Or wordApp.Documents.count > 0
         DoEvents
     Loop
     
