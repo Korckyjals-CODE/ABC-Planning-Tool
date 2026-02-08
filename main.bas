@@ -1338,7 +1338,11 @@ Sub GenerateWeeklyPlans(ByVal intStartWeek As Integer, ByVal intEndWeek As Integ
     Dim currentSection As String
     
     hadError = False
-    m_GWP_LogPath = Environ("TEMP") & "\GenerateWeeklyPlans_debug.log"
+    If Len(ThisWorkbook.Path) > 0 Then
+        m_GWP_LogPath = ThisWorkbook.Path & "\GenerateWeeklyPlans_debug.log"
+    Else
+        m_GWP_LogPath = Environ("TEMP") & "\GenerateWeeklyPlans_debug.log"
+    End If
     GWP_Log "=== GenerateWeeklyPlans started. Week range=" & intStartWeek & "-" & intEndWeek
     
     If intStartWeek > intEndWeek Then
@@ -1440,6 +1444,7 @@ Sub GenerateWeeklyPlans(ByVal intStartWeek As Integer, ByVal intEndWeek As Integ
         GWP_Log "Week folder: " & weekFolderPath
         
         ' Loop through each section in the table and create a Word document
+        GWP_Log "Caches built. Starting section loop."
         For Each sec In tblClassMinutes.ListColumns("Grado").DataBodyRange
             strSection = sec
             If sec <> "" Then
@@ -1450,7 +1455,8 @@ Sub GenerateWeeklyPlans(ByVal intStartWeek As Integer, ByVal intEndWeek As Integ
                 End If
                 currentWeek = intWeek
                 currentSection = strSection
-                GWP_Log "Processing section: " & strSection
+                On Error GoTo SectionError
+                GWP_Log "Processing section: " & strSection & " (SectionError handler active)"
                 Debug.Print "Week " & intWeek & ", Grade " & strSection & " - processing..."
                 
                 FillPlanningDataRecord intWeek, strSection, dicColMap
@@ -1542,8 +1548,27 @@ Sub GenerateWeeklyPlans(ByVal intStartWeek As Integer, ByVal intEndWeek As Integ
                     Debug.Print "Week " & intWeek & ", Grade " & strSection & " - OK"
                 End With
             End If
+SectionError:
+            If Err.Number <> 0 Then
+                hadError = True
+                Debug.Print "Week " & currentWeek & ", Grade " & currentSection & " - FAILED"
+                GWP_Log "ERROR " & Err.Number & ": " & Err.Description & " (section " & currentSection & ")"
+                GWP_Log "SectionError: clearing err, attempting doc cleanup"
+                Err.Clear
+                ' Avoid touching disconnected COM objects - can re-raise. GWP_Log uses On Error GoTo 0
+                ' which clears our handler, so re-assert Resume Next before any operation that may raise:
+                On Error Resume Next
+                wordDoc.Close SaveChanges:=False
+                If Err.Number <> 0 Then GWP_Log "SectionError: wordDoc.Close raised " & Err.Number: On Error Resume Next
+                Set wordDoc = Nothing
+                If Err.Number <> 0 Then GWP_Log "SectionError: Set Nothing raised " & Err.Number: On Error Resume Next
+                On Error GoTo RestoreSettings
+                Err.Clear
+                GWP_Log "SectionError: continuing to next section"
+            End If
 NextItem:
         Next sec
+        On Error GoTo RestoreSettings
 ContinueNextWeek:
     Next intWeek
     
