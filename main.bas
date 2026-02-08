@@ -1411,6 +1411,10 @@ Sub GenerateWeeklyPlans(ByVal intStartWeek As Integer, ByVal intEndWeek As Integ
     Set fso = CreateObject("Scripting.FileSystemObject")
     
     For intWeek = intStartWeek To intEndWeek
+        If Not WeekExistsInClassesPerWeek(intWeek, tblClassesPerWeek) Then
+            GWP_Log "Week " & intWeek & " skipped (not found in tblClassesPerWeek)"
+            GoTo ContinueNextWeek
+        End If
         strBimester = Application.WorksheetFunction.XLookup(intWeek, tblClassesPerWeek.ListColumns("Semana ABC").DataBodyRange, _
             tblClassesPerWeek.ListColumns("Bimestre").DataBodyRange)
         If strBimester <> "" Then
@@ -1530,6 +1534,7 @@ Sub GenerateWeeklyPlans(ByVal intStartWeek As Integer, ByVal intEndWeek As Integ
             End If
 NextItem:
         Next sec
+ContinueNextWeek:
     Next intWeek
     
     GWP_Log "Section loop finished normally."
@@ -2437,6 +2442,13 @@ Else
     GetBlockNumber = ""
 End If
 
+End Function
+
+Private Function WeekExistsInClassesPerWeek(ByVal intWeek As Integer, ByVal tblClassesPerWeek As ListObject) As Boolean
+    Dim rng As Range
+    Set rng = tblClassesPerWeek.ListColumns("Semana ABC").DataBodyRange
+    If rng Is Nothing Then Exit Function
+    WeekExistsInClassesPerWeek = (Application.WorksheetFunction.CountIf(rng, intWeek) > 0)
 End Function
 
 Private Function IsSectionIncluded(ByVal strSection As String, ByVal varSections As Variant) As Boolean
