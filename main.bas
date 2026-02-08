@@ -1426,8 +1426,9 @@ Sub GenerateWeeklyPlans(ByVal intWeekNumber As Integer, Optional ByVal varSectio
             Set dicPlanningData = ReadPlanningRecord(intWeekNumber, strSection, dicColMap)
             GWP_Log "ReadPlanningRecord done for " & strSection
             
-            ' Replace "XX" with the actual section in the document name
+            ' Replace "XX" with the section and "W--" with the week number in the document name
             newDocName = Replace(templateName, "XX", sec.value)
+            newDocName = Replace(newDocName, "W--", "W" & intWeekNumber)
             fullSavePath = folderPath & "\" & newDocName
             GWP_Log "newDocName=" & newDocName & " fullSavePath=" & fullSavePath
             
