@@ -1035,7 +1035,7 @@ Sub GenerateUnitPlans()
     MsgBox "Documents created successfully!"
 End Sub
 
-Sub GenerateWeeklyPlans(ByVal intWeekNumber As Integer)
+Sub GenerateWeeklyPlans(ByVal intWeekNumber As Integer, Optional ByVal varSections As Variant = Empty)
     Dim ws As Worksheet
     Dim tbl As ListObject
     Dim tblClassMinutes As ListObject
@@ -1119,7 +1119,7 @@ Sub GenerateWeeklyPlans(ByVal intWeekNumber As Integer)
     For Each sec In tblClassMinutes.ListColumns("Grado").DataBodyRange
         strSection = sec
         If sec <> "" Then
-            If sec <> "2A" Then
+            If Not IsSectionIncluded(CStr(sec.value), varSections) Then
                 GoTo NextItem
             End If
             Debug.Print ("Processing section " & strSection)
@@ -2016,6 +2016,30 @@ Else
     GetBlockNumber = ""
 End If
 
+End Function
+
+Private Function IsSectionIncluded(ByVal strSection As String, ByVal varSections As Variant) As Boolean
+    ' Returns True if strSection should be processed: when varSections is Empty, include all;
+    ' otherwise include only when strSection is in the list (single string or array), case-insensitive.
+    If IsEmpty(varSections) Then
+        IsSectionIncluded = True
+        Exit Function
+    End If
+    Dim i As Long
+    If IsArray(varSections) Then
+        For i = LBound(varSections) To UBound(varSections)
+            If StrComp(CStr(varSections(i)), strSection, vbTextCompare) = 0 Then
+                IsSectionIncluded = True
+                Exit Function
+            End If
+        Next i
+    Else
+        If StrComp(CStr(varSections), strSection, vbTextCompare) = 0 Then
+            IsSectionIncluded = True
+            Exit Function
+        End If
+    End If
+    IsSectionIncluded = False
 End Function
 
 Function GetColumnNumber(ByVal tbl As ListObject, strColumnName As String)
