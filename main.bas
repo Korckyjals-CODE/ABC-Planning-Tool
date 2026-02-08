@@ -25,6 +25,140 @@ DurationCodeToMins = dblDuration
 
 End Function
 
+' Returns number of classes (repeat count) for MasterList duration code: "Xc" -> X, "Xh" -> 1, else 0.
+Function ClassesFromCode(ByVal strCode As String) As Long
+    Dim strSuffix As String
+    Dim strNum As String
+    If Len(strCode) < 2 Then
+        ClassesFromCode = 0
+        Exit Function
+    End If
+    strSuffix = Right(strCode, 1)
+    strNum = Left(strCode, Len(strCode) - 1)
+    Select Case LCase(strSuffix)
+        Case "c"
+            ClassesFromCode = CLng(Val(strNum))
+            If ClassesFromCode < 0 Then ClassesFromCode = 0
+        Case "h"
+            ClassesFromCode = 1
+        Case Else
+            ClassesFromCode = 0
+    End Select
+End Function
+
+' Builds 1-based array of activity names from MasterList range (row 1 = header; col 1 = item, col 2 = Xc/Xh code).
+Function BuildExpandedListFromMasterRange(ByVal rng As Range) As Variant
+    Dim colOut As Collection
+    Dim i As Long
+    Dim n As Long
+    Dim j As Long
+    Dim item As Variant
+    Dim code As String
+    Dim arrOut() As Variant
+    Dim lastRow As Long
+
+    Set colOut = New Collection
+    If rng Is Nothing Then
+        BuildExpandedListFromMasterRange = Array()
+        Exit Function
+    End If
+    lastRow = rng.Rows.Count
+    If lastRow < 2 Then
+        BuildExpandedListFromMasterRange = Array()
+        Exit Function
+    End If
+
+    For i = 2 To lastRow
+        item = rng.Cells(i, 1).Value
+        code = CStr(rng.Cells(i, 2).Value)
+        n = ClassesFromCode(code)
+        For j = 1 To n
+            colOut.Add item
+        Next j
+    Next i
+
+    If colOut.Count = 0 Then
+        BuildExpandedListFromMasterRange = Array()
+        Exit Function
+    End If
+    ReDim arrOut(1 To colOut.Count)
+    For i = 1 To colOut.Count
+        arrOut(i) = colOut(i)
+    Next i
+    BuildExpandedListFromMasterRange = arrOut
+End Function
+
+' Populates "Next Activity" on all "XXX Actividades TBox" ListObjects from named range MasterListXXX.
+Public Sub PopulateNextActivityFromMasterLists()
+    Dim sheetNames() As Variant
+    Dim xxxList() As Variant
+    Dim i As Integer
+    Dim s As Integer
+    Dim ws As Worksheet
+    Dim rngMaster As Range
+    Dim expanded As Variant
+    Dim N As Long
+    Dim tbl As ListObject
+    Dim lcNext As ListColumn
+    Dim currentRows As Long
+    Dim r As Long
+    Dim nm As Name
+
+    sheetNames = Array("1 Actividades TBox", "2 Actividades TBox", "3 Actividades TBox", "4 Actividades TBox", _
+        "5 Actividades TBox", "6 Actividades TBox", "7 Actividades TBox", "8 Actividades TBox", _
+        "9 Actividades TBox", "10 Actividades TBox", "11 Actividades TBox", "12 Actividades TBox", "DC3 Actividades TBox")
+    xxxList = Array("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "DC3")
+
+    For s = LBound(sheetNames) To UBound(sheetNames)
+        Set ws = Nothing
+        Set nm = Nothing
+        On Error Resume Next
+        Set ws = ThisWorkbook.Worksheets(CStr(sheetNames(s)))
+        On Error GoTo 0
+        If ws Is Nothing Then GoTo NextSheet
+
+        On Error Resume Next
+        Set nm = ThisWorkbook.Names("MasterList" & CStr(xxxList(s)))
+        On Error GoTo 0
+        If nm Is Nothing Then GoTo NextSheet
+        Set rngMaster = nm.RefersToRange
+        If rngMaster Is Nothing Then GoTo NextSheet
+
+        expanded = BuildExpandedListFromMasterRange(rngMaster)
+        N = 0
+        If IsArray(expanded) Then
+            If UBound(expanded) >= LBound(expanded) Then N = UBound(expanded) - LBound(expanded) + 1
+        End If
+        If N = 0 Then GoTo NextSheet
+
+        For i = 1 To ws.ListObjects.Count
+            Set tbl = ws.ListObjects(i)
+            Set lcNext = Nothing
+            On Error Resume Next
+            Set lcNext = tbl.ListColumns("Next Activity")
+            On Error GoTo 0
+            If lcNext Is Nothing Then GoTo NextTable
+
+            currentRows = 0
+            If Not tbl.DataBodyRange Is Nothing Then currentRows = tbl.DataBodyRange.Rows.Count
+            Do While currentRows < N
+                tbl.ListRows.Add
+                currentRows = currentRows + 1
+            Loop
+
+            ' Rows 1 to N-1 get expanded(2), expanded(3), ..., expanded(N). Row N stays empty.
+            For r = 1 To N - 1
+                lcNext.DataBodyRange.Cells(r, 1).Value = expanded(LBound(expanded) + r)
+            Next r
+            If N >= 1 Then
+                lcNext.DataBodyRange.Cells(N, 1).Value = Empty
+            End If
+NextTable:
+        Next i
+NextSheet:
+    Next s
+End Sub
+
 Function ExpandArrays(DatesRange As Range, StringsRange As Range) As Variant
     Dim i As Long, j As Long, k As Long
     Dim SplitItems() As String
