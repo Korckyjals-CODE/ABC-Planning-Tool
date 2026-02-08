@@ -1332,6 +1332,8 @@ Sub GenerateWeeklyPlans(ByVal intStartWeek As Integer, ByVal intEndWeek As Integ
     Dim originalCalculation As XlCalculation
     Dim dicColMap As Object
     Dim hadError As Boolean
+    Dim weekFolderPath As String
+    Dim fso As Object
     
     hadError = False
     m_GWP_LogPath = Environ("TEMP") & "\GenerateWeeklyPlans_debug.log"
@@ -1406,6 +1408,8 @@ Sub GenerateWeeklyPlans(ByVal intStartWeek As Integer, ByVal intEndWeek As Integ
     Set m_dicBlockDuration = BuildBlockDurationMap()
     Set m_dicTBoxProjectInfo = BuildTBoxProjectInfoMap()
     
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    
     For intWeek = intStartWeek To intEndWeek
         strBimester = Application.WorksheetFunction.XLookup(intWeek, tblClassesPerWeek.ListColumns("Semana ABC").DataBodyRange, _
             tblClassesPerWeek.ListColumns("Bimestre").DataBodyRange)
@@ -1419,6 +1423,12 @@ Sub GenerateWeeklyPlans(ByVal intStartWeek As Integer, ByVal intEndWeek As Integ
         m_strBimesterRun = strBimester
         Set m_dicBlockNumbers = BuildWeekBlockNumbersMap(intWeek, tblClassMinutes, tblClassesPerWeek)
         GWP_Log "Processing week " & intWeek
+        
+        weekFolderPath = folderPath & "\W" & Format(intWeek, "00")
+        If Not fso.FolderExists(weekFolderPath) Then
+            fso.CreateFolder weekFolderPath
+        End If
+        GWP_Log "Week folder: " & weekFolderPath
         
         ' Loop through each section in the table and create a Word document
         For Each sec In tblClassMinutes.ListColumns("Grado").DataBodyRange
@@ -1438,7 +1448,7 @@ Sub GenerateWeeklyPlans(ByVal intStartWeek As Integer, ByVal intEndWeek As Integ
                 ' Replace "XX" with the section and "W--" with the week number in the document name
                 newDocName = Replace(templateName, "XX", sec.value)
                 newDocName = Replace(newDocName, "W--", "W" & Format(intWeek, "00"))
-                fullSavePath = folderPath & "\" & newDocName
+                fullSavePath = weekFolderPath & "\" & newDocName
                 GWP_Log "newDocName=" & newDocName & " fullSavePath=" & fullSavePath
                 
                 ' Create a new Word document from the template
