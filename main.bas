@@ -1301,7 +1301,7 @@ Sub GenerateUnitPlans()
     MsgBox "Documents created successfully!"
 End Sub
 
-Sub GenerateWeeklyPlans(ByVal intWeekNumber As Integer, Optional ByVal varSections As Variant = Empty)
+Sub GenerateWeeklyPlans(ByVal intStartWeek As Integer, ByVal intEndWeek As Integer, Optional ByVal varSections As Variant = Empty)
     Dim ws As Worksheet
     Dim tbl As ListObject
     Dim tblClassMinutes As ListObject
@@ -1318,6 +1318,7 @@ Sub GenerateWeeklyPlans(ByVal intWeekNumber As Integer, Optional ByVal varSectio
     Dim i As Integer
     Dim j As Integer
     Dim Counter As Integer
+    Dim intWeek As Integer
     Dim strSection As String
     Dim strBimester As String
     Dim tblSandbox As ListObject
@@ -1334,18 +1335,17 @@ Sub GenerateWeeklyPlans(ByVal intWeekNumber As Integer, Optional ByVal varSectio
     
     hadError = False
     m_GWP_LogPath = Environ("TEMP") & "\GenerateWeeklyPlans_debug.log"
-    GWP_Log "=== GenerateWeeklyPlans started. Week=" & intWeekNumber
+    GWP_Log "=== GenerateWeeklyPlans started. Week range=" & intStartWeek & "-" & intEndWeek
+    
+    If intStartWeek > intEndWeek Then
+        GWP_Log "Invalid range: start week " & intStartWeek & " > end week " & intEndWeek
+        MsgBox "Invalid week range: start week must be less than or equal to end week.", vbExclamation
+        Exit Sub
+    End If
     
     strSubject = "Computers"
     
     Set tblClassesPerWeek = wsClassesPerWeek.ListObjects("tblClassesPerWeek")
-    strBimester = Application.WorksheetFunction.XLookup(intWeekNumber, tblClassesPerWeek.ListColumns("Semana ABC").DataBodyRange, _
-        tblClassesPerWeek.ListColumns("Bimestre").DataBodyRange)
-    If strBimester <> "" Then
-        strBimesterNumber = Right(strBimester, Len(strBimester) - 1)
-    Else
-        strBimesterNumber = ""
-    End If
     
     ' Set worksheet and table
     Set ws = wsBimesters
@@ -1403,114 +1403,124 @@ Sub GenerateWeeklyPlans(ByVal intWeekNumber As Integer, Optional ByVal varSectio
     DeleteAllRowsInTable tblSandbox
     Set dicColMap = BuildPlanningDataColumnMap(tblSandbox)
     m_fWeekCacheSet = True
-    m_datStartDate = Application.WorksheetFunction.XLookup(intWeekNumber, tblClassesPerWeek.ListColumns("Semana ABC").Range, tblClassesPerWeek.ListColumns("Fecha Inicio").Range)
-    m_datEndDate = Application.WorksheetFunction.XLookup(intWeekNumber, tblClassesPerWeek.ListColumns("Semana ABC").Range, tblClassesPerWeek.ListColumns("Fecha Fin").Range)
-    m_strBimesterRun = strBimester
     Set m_dicBlockDuration = BuildBlockDurationMap()
-    Set m_dicBlockNumbers = BuildWeekBlockNumbersMap(intWeekNumber, tblClassMinutes, tblClassesPerWeek)
     Set m_dicTBoxProjectInfo = BuildTBoxProjectInfoMap()
-    GWP_Log "Caches built. Starting section loop."
     
-    ' Loop through each section in the table and create a Word document
-    For Each sec In tblClassMinutes.ListColumns("Grado").DataBodyRange
-        strSection = sec
-        If sec <> "" Then
-            If Not IsSectionIncluded(CStr(sec.value), varSections) Then
-                GWP_Log "Section skipped (not included): " & strSection
-                GoTo NextItem
-            End If
-            GWP_Log "Processing section: " & strSection
-            
-            FillPlanningDataRecord intWeekNumber, strSection, dicColMap
-            GWP_Log "FillPlanningDataRecord done for " & strSection
-            Set dicPlanningData = ReadPlanningRecord(intWeekNumber, strSection, dicColMap)
-            GWP_Log "ReadPlanningRecord done for " & strSection
-            
-            ' Replace "XX" with the section and "W--" with the week number in the document name
-            newDocName = Replace(templateName, "XX", sec.value)
-            newDocName = Replace(newDocName, "W--", "W" & intWeekNumber)
-            fullSavePath = folderPath & "\" & newDocName
-            GWP_Log "newDocName=" & newDocName & " fullSavePath=" & fullSavePath
-            
-            ' Create a new Word document from the template
-            Set wordDoc = wordApp.Documents.Add(templatePath)
-            GWP_Log "Documents.Add done. wordDoc is " & (Not wordDoc Is Nothing)
-            
-            With wordDoc
-                ' Fill in the fields
-                For i = .ContentControls.count To 1 Step -1
-                    Select Case .ContentControls(i).Range.text
-                        Case "<section>"
-                            .ContentControls(i).Range.text = sec.value
-                        Case "<subject>"
-                            .ContentControls(i).Range.text = strSubject
-                        Case "<week_number>"
-                            .ContentControls(i).Range.text = intWeekNumber
-                        Case "<bimester_number>"
-                            .ContentControls(i).Range.text = strBimesterNumber
-                        Case "<start_date>"
-                            .ContentControls(i).Range.text = SafeFormatDate(dicPlanningData.Item("<start_date>"))
-                        Case "<end_date>"
-                            .ContentControls(i).Range.text = SafeFormatDate(dicPlanningData.Item("<end_date>"))
-                        Case "<topic_class_1>"
-                            .ContentControls(i).Range.text = dicPlanningData.Item("<topic_class_1>")
-                        Case "<topic_class_2>"
-                            .ContentControls(i).Range.text = dicPlanningData.Item("<topic_class_2>")
-                        Case "<objective_class_1>"
-                            .ContentControls(i).Range.text = dicPlanningData.Item("<objective_class_1>")
-                        Case "<objective_class_2>"
-                            .ContentControls(i).Range.text = dicPlanningData.Item("<objective_class_2>")
-                        Case "<project_name_class_1>"
-                            .ContentControls(i).Range.text = dicPlanningData.Item("<project_name_class_1>")
-                        Case "<project_name_class_2>"
-                            .ContentControls(i).Range.text = dicPlanningData.Item("<project_name_class_2>")
-                        Case "<activity_number_class_1>"
-                            .ContentControls(i).Range.text = dicPlanningData.Item("<activity_number_class_1>")
-                        Case "<activity_number_class_2>"
-                            .ContentControls(i).Range.text = dicPlanningData.Item("<activity_number_class_2>")
-                        Case "<description_class_1>"
-                            .ContentControls(i).Range.text = dicPlanningData.Item("<description_class_1>")
-                        Case "<description_class_2>"
-                            .ContentControls(i).Range.text = dicPlanningData.Item("<description_class_2>")
-                        Case "<topic_list_class_1>"
-                            ReplacePlaceholderWithNumberedListInRichText .ContentControls(i), dicPlanningData.Item("<topic_list_class_1>")
-                        Case "<topic_list_class_2>"
-                            ReplacePlaceholderWithNumberedListInRichText .ContentControls(i), dicPlanningData.Item("<topic_list_class_2>")
-                        Case "<topic_list_class_1_2>"
-                            ReplacePlaceholderWithNumberedListInRichText .ContentControls(i), dicPlanningData.Item("<topic_list_class_1_2>")
-                        Case "<objective_list_class_1>"
-                            ReplacePlaceholderWithNumberedListInRichText .ContentControls(i), dicPlanningData.Item("<objective_list_class_1>")
-                        Case "<objective_list_class_2>"
-                            ReplacePlaceholderWithNumberedListInRichText .ContentControls(i), dicPlanningData.Item("<objective_list_class_2>")
-                        Case "<objective_list_class_1_2>"
-                            ReplacePlaceholderWithNumberedListInRichText .ContentControls(i), dicPlanningData.Item("<objective_list_class_1_2>")
-                        Case "<description_list_class_1>"
-                            ReplacePlaceholderWithNumberedListInRichText .ContentControls(i), dicPlanningData.Item("<description_list_class_1>")
-                        Case "<description_list_class_2>"
-                            ReplacePlaceholderWithNumberedListInRichText .ContentControls(i), dicPlanningData.Item("<description_list_class_2>")
-                        Case "<description_list_class_1_2>"
-                            ReplacePlaceholderWithNumberedListInRichText .ContentControls(i), dicPlanningData.Item("<description_list_class_1_2>")
-                    End Select
-                Next
-                
-                ' Update the formula field (annotated as 6)
-                .Fields.Update
-                GWP_Log "Fields.Update done. About to SaveAs: " & fullSavePath
-                
-                ' Save the document with the new name
-                .SaveAs fullSavePath
-                GWP_Log "SaveAs completed."
-                If Dir(fullSavePath) <> "" Then
-                    GWP_Log "File exists after save: YES"
-                Else
-                    GWP_Log "File exists after save: NO (path: " & fullSavePath & ")"
-                End If
-                .Close
-                GWP_Log "Document closed."
-            End With
+    For intWeek = intStartWeek To intEndWeek
+        strBimester = Application.WorksheetFunction.XLookup(intWeek, tblClassesPerWeek.ListColumns("Semana ABC").DataBodyRange, _
+            tblClassesPerWeek.ListColumns("Bimestre").DataBodyRange)
+        If strBimester <> "" Then
+            strBimesterNumber = Right(strBimester, Len(strBimester) - 1)
+        Else
+            strBimesterNumber = ""
         End If
+        m_datStartDate = Application.WorksheetFunction.XLookup(intWeek, tblClassesPerWeek.ListColumns("Semana ABC").Range, tblClassesPerWeek.ListColumns("Fecha Inicio").Range)
+        m_datEndDate = Application.WorksheetFunction.XLookup(intWeek, tblClassesPerWeek.ListColumns("Semana ABC").Range, tblClassesPerWeek.ListColumns("Fecha Fin").Range)
+        m_strBimesterRun = strBimester
+        Set m_dicBlockNumbers = BuildWeekBlockNumbersMap(intWeek, tblClassMinutes, tblClassesPerWeek)
+        GWP_Log "Processing week " & intWeek
+        
+        ' Loop through each section in the table and create a Word document
+        For Each sec In tblClassMinutes.ListColumns("Grado").DataBodyRange
+            strSection = sec
+            If sec <> "" Then
+                If Not IsSectionIncluded(CStr(sec.value), varSections) Then
+                    GWP_Log "Section skipped (not included): " & strSection
+                    GoTo NextItem
+                End If
+                GWP_Log "Processing section: " & strSection
+                
+                FillPlanningDataRecord intWeek, strSection, dicColMap
+                GWP_Log "FillPlanningDataRecord done for " & strSection
+                Set dicPlanningData = ReadPlanningRecord(intWeek, strSection, dicColMap)
+                GWP_Log "ReadPlanningRecord done for " & strSection
+                
+                ' Replace "XX" with the section and "W--" with the week number in the document name
+                newDocName = Replace(templateName, "XX", sec.value)
+                newDocName = Replace(newDocName, "W--", "W" & intWeek)
+                fullSavePath = folderPath & "\" & newDocName
+                GWP_Log "newDocName=" & newDocName & " fullSavePath=" & fullSavePath
+                
+                ' Create a new Word document from the template
+                Set wordDoc = wordApp.Documents.Add(templatePath)
+                GWP_Log "Documents.Add done. wordDoc is " & (Not wordDoc Is Nothing)
+                
+                With wordDoc
+                    ' Fill in the fields
+                    For i = .ContentControls.count To 1 Step -1
+                        Select Case .ContentControls(i).Range.text
+                            Case "<section>"
+                                .ContentControls(i).Range.text = sec.value
+                            Case "<subject>"
+                                .ContentControls(i).Range.text = strSubject
+                            Case "<week_number>"
+                                .ContentControls(i).Range.text = intWeek
+                            Case "<bimester_number>"
+                                .ContentControls(i).Range.text = strBimesterNumber
+                            Case "<start_date>"
+                                .ContentControls(i).Range.text = SafeFormatDate(dicPlanningData.Item("<start_date>"))
+                            Case "<end_date>"
+                                .ContentControls(i).Range.text = SafeFormatDate(dicPlanningData.Item("<end_date>"))
+                            Case "<topic_class_1>"
+                                .ContentControls(i).Range.text = dicPlanningData.Item("<topic_class_1>")
+                            Case "<topic_class_2>"
+                                .ContentControls(i).Range.text = dicPlanningData.Item("<topic_class_2>")
+                            Case "<objective_class_1>"
+                                .ContentControls(i).Range.text = dicPlanningData.Item("<objective_class_1>")
+                            Case "<objective_class_2>"
+                                .ContentControls(i).Range.text = dicPlanningData.Item("<objective_class_2>")
+                            Case "<project_name_class_1>"
+                                .ContentControls(i).Range.text = dicPlanningData.Item("<project_name_class_1>")
+                            Case "<project_name_class_2>"
+                                .ContentControls(i).Range.text = dicPlanningData.Item("<project_name_class_2>")
+                            Case "<activity_number_class_1>"
+                                .ContentControls(i).Range.text = dicPlanningData.Item("<activity_number_class_1>")
+                            Case "<activity_number_class_2>"
+                                .ContentControls(i).Range.text = dicPlanningData.Item("<activity_number_class_2>")
+                            Case "<description_class_1>"
+                                .ContentControls(i).Range.text = dicPlanningData.Item("<description_class_1>")
+                            Case "<description_class_2>"
+                                .ContentControls(i).Range.text = dicPlanningData.Item("<description_class_2>")
+                            Case "<topic_list_class_1>"
+                                ReplacePlaceholderWithNumberedListInRichText .ContentControls(i), dicPlanningData.Item("<topic_list_class_1>")
+                            Case "<topic_list_class_2>"
+                                ReplacePlaceholderWithNumberedListInRichText .ContentControls(i), dicPlanningData.Item("<topic_list_class_2>")
+                            Case "<topic_list_class_1_2>"
+                                ReplacePlaceholderWithNumberedListInRichText .ContentControls(i), dicPlanningData.Item("<topic_list_class_1_2>")
+                            Case "<objective_list_class_1>"
+                                ReplacePlaceholderWithNumberedListInRichText .ContentControls(i), dicPlanningData.Item("<objective_list_class_1>")
+                            Case "<objective_list_class_2>"
+                                ReplacePlaceholderWithNumberedListInRichText .ContentControls(i), dicPlanningData.Item("<objective_list_class_2>")
+                            Case "<objective_list_class_1_2>"
+                                ReplacePlaceholderWithNumberedListInRichText .ContentControls(i), dicPlanningData.Item("<objective_list_class_1_2>")
+                            Case "<description_list_class_1>"
+                                ReplacePlaceholderWithNumberedListInRichText .ContentControls(i), dicPlanningData.Item("<description_list_class_1>")
+                            Case "<description_list_class_2>"
+                                ReplacePlaceholderWithNumberedListInRichText .ContentControls(i), dicPlanningData.Item("<description_list_class_2>")
+                            Case "<description_list_class_1_2>"
+                                ReplacePlaceholderWithNumberedListInRichText .ContentControls(i), dicPlanningData.Item("<description_list_class_1_2>")
+                        End Select
+                    Next
+                    
+                    ' Update the formula field (annotated as 6)
+                    .Fields.Update
+                    GWP_Log "Fields.Update done. About to SaveAs: " & fullSavePath
+                    
+                    ' Save the document with the new name
+                    .SaveAs fullSavePath
+                    GWP_Log "SaveAs completed."
+                    If Dir(fullSavePath) <> "" Then
+                        GWP_Log "File exists after save: YES"
+                    Else
+                        GWP_Log "File exists after save: NO (path: " & fullSavePath & ")"
+                    End If
+                    .Close
+                    GWP_Log "Document closed."
+                End With
+            End If
 NextItem:
-    Next sec
+        Next sec
+    Next intWeek
     
     GWP_Log "Section loop finished normally."
     
