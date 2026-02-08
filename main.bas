@@ -1,6 +1,27 @@
 Attribute VB_Name = "main"
 Option Explicit
 
+' Cache for GenerateWeeklyPlans run: set at start, cleared at RestoreSettings.
+Private m_dicBlockDuration As Object
+Private m_dicBlockNumbers As Object
+Private m_datStartDate As Date
+Private m_datEndDate As Date
+Private m_strBimesterRun As String
+Private m_fWeekCacheSet As Boolean
+Private m_dicTBoxProjectInfo As Object
+Private m_GWP_LogPath As String
+
+' Appends a timestamped line to the debug log file. No-op if m_GWP_LogPath is empty.
+Sub GWP_Log(ByVal msg As String)
+    Dim f As Long
+    If Len(m_GWP_LogPath) = 0 Then Exit Sub
+    On Error Resume Next
+    f = FreeFile
+    Open m_GWP_LogPath For Append As #f
+    Print #f, Format(Now, "yyyy-mm-dd hh:nn:ss") & " | " & msg
+    Close #f
+    On Error GoTo 0
+End Sub
 
 Function DurationCodeToMins(ByVal strDurationCode As String, Optional ByVal intClassDuration As Integer = 45) As Double
 
@@ -263,37 +284,47 @@ Sub Generate()
 End Sub
 
 Function GetActivityList(ByVal strStartActivity As String, ByVal strSection As String, ByVal strBlock As String) As Variant
+    Dim colActivities As New Collection
+    Dim tblTarget As ListObject
+    Dim intBlockDuration As Integer
+    Dim data As Variant
+    Dim startRow As Long
+    Dim i As Long
+    Dim intActivityDuration As Integer
+    Dim intTotalDuration As Integer
+    Dim colObjective As New Collection
+    Dim colDescription As New Collection
 
-Dim colActivities As New Collection
-Dim tblTarget As ListObject
-Dim intBlockDuration As Integer
-Dim rngCurrentActivity As Range
-Dim intActivityDuration As Integer
-Dim intTotalDuration As Integer
-Dim colObjective As New Collection
-Dim colDescription As New Collection
-
-Set tblTarget = GetMasterTable(strSection)
-intBlockDuration = GetBlockDuration(strBlock)
-
-Set rngCurrentActivity = tblTarget.ListColumns(2).DataBodyRange.Find(What:=strStartActivity, LookIn:=Excel.XlFindLookIn.xlValues, _
-    LookAt:=Excel.XlLookAt.xlWhole)
-intTotalDuration = 0
-Do While Not rngCurrentActivity Is Nothing
-    colActivities.Add rngCurrentActivity.value
-    colObjective.Add rngCurrentActivity.Offset(0, 2).value
-    colDescription.Add rngCurrentActivity.Offset(0, 3).value
-    intActivityDuration = Int(DurationCodeToMins(rngCurrentActivity.Offset(0, 1).value))
-    intTotalDuration = intTotalDuration + intActivityDuration
-    If intTotalDuration >= intBlockDuration Then
-        Set rngCurrentActivity = Nothing
-    Else
-        Set rngCurrentActivity = rngCurrentActivity.Offset(1, 0)
+    Set tblTarget = GetMasterTable(strSection)
+    intBlockDuration = GetBlockDuration(strBlock)
+    If tblTarget.DataBodyRange Is Nothing Then
+        GetActivityList = Array(colActivities, colObjective, colDescription)
+        Exit Function
     End If
-Loop
-
-GetActivityList = Array(colActivities, colObjective, colDescription)
-
+    data = tblTarget.DataBodyRange.Value
+    startRow = 0
+    For i = 1 To UBound(data, 1)
+        If CStr(data(i, 2)) = strStartActivity Then
+            startRow = i
+            Exit For
+        End If
+    Next i
+    If startRow = 0 Then
+        GetActivityList = Array(colActivities, colObjective, colDescription)
+        Exit Function
+    End If
+    intTotalDuration = 0
+    For i = startRow To UBound(data, 1)
+        colActivities.Add data(i, 2)
+        colObjective.Add data(i, 4)
+        colDescription.Add data(i, 5)
+        intActivityDuration = Int(DurationCodeToMins(CStr(data(i, 3))))
+        intTotalDuration = intTotalDuration + intActivityDuration
+        If intTotalDuration >= intBlockDuration Then Exit For
+        If i >= UBound(data, 1) Then Exit For
+        If IsEmpty(data(i + 1, 2)) Or Len(CStr(data(i + 1, 2))) = 0 Then Exit For
+    Next i
+    GetActivityList = Array(colActivities, colObjective, colDescription)
 End Function
 
 Function GetBimonthly(ByVal strBimester As String) As String
@@ -550,60 +581,161 @@ Function GetUnitPlanIndicators(ByVal intProjectNumber As Integer, ByVal strGrade
     GetUnitPlanIndicators = ""
 End Function
 
-Function GetNextActivity(ByVal strStartActivity As String, ByVal intTargetTotalDuration As Integer, ByVal strSection) As String
+Function GetNextActivity(ByVal strStartActivity As String, ByVal intTargetTotalDuration As Integer, ByVal strSection As String) As String
+    Dim tblTarget As ListObject
+    Dim data As Variant
+    Dim startRow As Long
+    Dim i As Long
+    Dim intActivityDuration As Integer
+    Dim intTotalDuration As Integer
+    Dim strNextActivity As String
+    Dim nextRow As Long
 
-Dim colActivities As New Collection
-Dim tblTarget As ListObject
-Dim rngCurrentActivity As Range
-Dim intActivityDuration As Integer
-Dim intTotalDuration As Integer
-Dim colObjective As New Collection
-Dim colDescription As New Collection
-Dim rngNextActivity As Range
-Dim strNextActivity As String
-
-Set tblTarget = GetMasterTable(strSection)
-
-Set rngCurrentActivity = tblTarget.ListColumns(2).DataBodyRange.Find(What:=strStartActivity, LookIn:=Excel.XlFindLookIn.xlValues, _
-    LookAt:=Excel.XlLookAt.xlWhole)
-intTotalDuration = 0
-
-Do While Not rngCurrentActivity Is Nothing
-    colActivities.Add rngCurrentActivity.value
-    colObjective.Add rngCurrentActivity.Offset(0, 2).value
-    colDescription.Add rngCurrentActivity.Offset(0, 3).value
-    intActivityDuration = Int(DurationCodeToMins(rngCurrentActivity.Offset(0, 1).value))
-    intTotalDuration = intTotalDuration + intActivityDuration
-    If intTotalDuration >= intTargetTotalDuration Then
-        Set rngNextActivity = rngCurrentActivity
-        Set rngCurrentActivity = Nothing
-    Else
-        If rngCurrentActivity.Offset(1, 0).value = "" Then
-            Exit Do
-        End If
-        Set rngCurrentActivity = rngCurrentActivity.Offset(1, 0)
-    End If
-Loop
-
-If Not rngNextActivity Is Nothing Then
-    strNextActivity = rngNextActivity.value
-Else
     strNextActivity = ""
-End If
-
-GetNextActivity = strNextActivity
-
+    Set tblTarget = GetMasterTable(strSection)
+    If tblTarget.DataBodyRange Is Nothing Then
+        GetNextActivity = strNextActivity
+        Exit Function
+    End If
+    data = tblTarget.DataBodyRange.Value
+    startRow = 0
+    For i = 1 To UBound(data, 1)
+        If CStr(data(i, 2)) = strStartActivity Then
+            startRow = i
+            Exit For
+        End If
+    Next i
+    If startRow = 0 Then
+        GetNextActivity = strNextActivity
+        Exit Function
+    End If
+    intTotalDuration = 0
+    nextRow = 0
+    For i = startRow To UBound(data, 1)
+        intActivityDuration = Int(DurationCodeToMins(CStr(data(i, 3))))
+        intTotalDuration = intTotalDuration + intActivityDuration
+        If intTotalDuration >= intTargetTotalDuration Then
+            nextRow = i
+            Exit For
+        End If
+        If i >= UBound(data, 1) Then Exit For
+        If IsEmpty(data(i + 1, 2)) Or Len(CStr(data(i + 1, 2))) = 0 Then Exit For
+    Next i
+    If nextRow > 0 Then strNextActivity = CStr(data(nextRow, 2))
+    GetNextActivity = strNextActivity
 End Function
 
-Function GetBlockDuration(ByVal strBlock As String) As Integer
+Function GetBlockDuration(ByVal strBlock As String, Optional ByVal dicBlockDuration As Object = Nothing) As Integer
+    Dim tblBlocks As ListObject
+    Dim dic As Object
+    Set dic = dicBlockDuration
+    If dic Is Nothing Then Set dic = m_dicBlockDuration
+    If Not dic Is Nothing Then
+        If dic.Exists(strBlock) Then
+            GetBlockDuration = dic(strBlock)
+            Exit Function
+        End If
+    End If
+    Set tblBlocks = wsBlocks.ListObjects("tblBlocks")
+    GetBlockDuration = Application.WorksheetFunction.XLookup(strBlock, tblBlocks.ListColumns("Bloque").DataBodyRange, _
+        tblBlocks.ListColumns(4).DataBodyRange, 0)
+End Function
 
-Dim tblBlocks As ListObject
+' Builds dictionary block name -> duration (minutes). Use for fast lookups in GenerateWeeklyPlans.
+Function BuildBlockDurationMap() As Scripting.Dictionary
+    Dim dic As New Scripting.Dictionary
+    Dim tblBlocks As ListObject
+    Dim arrBlock As Variant
+    Dim arrDuration As Variant
+    Dim i As Long
+    Set tblBlocks = wsBlocks.ListObjects("tblBlocks")
+    If tblBlocks.DataBodyRange Is Nothing Then
+        Set BuildBlockDurationMap = dic
+        Exit Function
+    End If
+    arrBlock = tblBlocks.ListColumns("Bloque").DataBodyRange.Value
+    arrDuration = tblBlocks.ListColumns(4).DataBodyRange.Value
+    For i = 1 To UBound(arrBlock, 1)
+        If Len(CStr(arrBlock(i, 1))) > 0 Then
+            If Not dic.Exists(arrBlock(i, 1)) Then dic.Add CStr(arrBlock(i, 1)), CLng(arrDuration(i, 1))
+        End If
+    Next i
+    Set BuildBlockDurationMap = dic
+End Function
 
-Set tblBlocks = wsBlocks.ListObjects("tblBlocks")
+' Builds dictionary section -> Array(block1, block2) for the given week from tblClassesPerWeek. Sections from tblClassMinutes Grado.
+Function BuildWeekBlockNumbersMap(ByVal intWeekNumber As Integer, ByVal tblClassMinutes As ListObject, ByVal tblClassesPerWeek As ListObject) As Scripting.Dictionary
+    Dim dic As New Scripting.Dictionary
+    Dim data As Variant
+    Dim weekCol As Long
+    Dim sectionCol As Long
+    Dim sec As Range
+    Dim sectionName As String
+    Dim i As Long
+    Dim firstRow As Long
+    Dim block1 As String
+    Dim block2 As String
+    Dim sectionsSeen As New Scripting.Dictionary
+    If tblClassesPerWeek.DataBodyRange Is Nothing Then
+        Set BuildWeekBlockNumbersMap = dic
+        Exit Function
+    End If
+    data = tblClassesPerWeek.DataBodyRange.Value
+    weekCol = GetColumnNumber(tblClassesPerWeek, "Semana ABC")
+    If weekCol <= 0 Then
+        Set BuildWeekBlockNumbersMap = dic
+        Exit Function
+    End If
+    For Each sec In tblClassMinutes.ListColumns("Grado").DataBodyRange
+        sectionName = CStr(sec.Value)
+        If Len(sectionName) > 0 And Not sectionsSeen.Exists(sectionName) Then
+            sectionsSeen.Add sectionName, True
+            sectionCol = GetColumnNumber(tblClassesPerWeek, sectionName)
+            If sectionCol > 0 Then
+                firstRow = 0
+                For i = 1 To UBound(data, 1)
+                    If data(i, weekCol) = intWeekNumber Then
+                        firstRow = i
+                        Exit For
+                    End If
+                Next i
+                If firstRow > 0 Then
+                    block1 = ""
+                    block2 = ""
+                    If firstRow <= UBound(data, 1) Then block1 = CStr(data(firstRow, sectionCol))
+                    If firstRow + 1 <= UBound(data, 1) And data(firstRow + 1, weekCol) = intWeekNumber Then block2 = CStr(data(firstRow + 1, sectionCol))
+                    dic.Add sectionName, Array(block1, block2)
+                End If
+            End If
+        End If
+    Next sec
+    Set BuildWeekBlockNumbersMap = dic
+End Function
 
-GetBlockDuration = Application.WorksheetFunction.XLookup(strBlock, tblBlocks.ListColumns("Bloque").DataBodyRange, _
-    tblBlocks.ListColumns(4).DataBodyRange, 0)
-
+' Builds dictionary key "Grade|ProjectNumber|ActivityNumber" -> Array(objective, description, projectName). Columns: 1=Grade, 2=Project#, 3=ProjectName, 5=Activity#, 7=Objective, 8=Description.
+Function BuildTBoxProjectInfoMap() As Scripting.Dictionary
+    Dim dic As New Scripting.Dictionary
+    Dim tbl As ListObject
+    Dim data As Variant
+    Dim i As Long
+    Dim key As String
+    Dim obj As String
+    Dim desc As String
+    Dim pname As String
+    Set tbl = wsTBoxActivities.ListObjects("tblTBoxActivities")
+    If tbl.DataBodyRange Is Nothing Then
+        Set BuildTBoxProjectInfoMap = dic
+        Exit Function
+    End If
+    data = tbl.DataBodyRange.Value
+    For i = 1 To UBound(data, 1)
+        key = CStr(data(i, 1)) & "|" & CStr(data(i, 2)) & "|" & CStr(data(i, 5))
+        obj = CStr(data(i, 7))
+        desc = CStr(data(i, 8))
+        pname = CStr(data(i, 3))
+        If Not dic.Exists(key) Then dic.Add key, Array(obj, desc, pname)
+    Next i
+    Set BuildTBoxProjectInfoMap = dic
 End Function
 
 Function GetPlanTable(ByVal strSection As String) As ListObject
@@ -1182,6 +1314,7 @@ Sub GenerateWeeklyPlans(ByVal intWeekNumber As Integer, Optional ByVal varSectio
     Dim templatePath As String
     Dim templateName As String
     Dim newDocName As String
+    Dim fullSavePath As String
     Dim i As Integer
     Dim j As Integer
     Dim Counter As Integer
@@ -1194,6 +1327,14 @@ Sub GenerateWeeklyPlans(ByVal intWeekNumber As Integer, Optional ByVal varSectio
     Dim strBimesterNumber As String
     Dim colTopicListClass1 As New Collection
     Dim colTopicListClass2 As New Collection
+    Dim originalScreenUpdating As Boolean
+    Dim originalCalculation As XlCalculation
+    Dim dicColMap As Object
+    Dim hadError As Boolean
+    
+    hadError = False
+    m_GWP_LogPath = Environ("TEMP") & "\GenerateWeeklyPlans_debug.log"
+    GWP_Log "=== GenerateWeeklyPlans started. Week=" & intWeekNumber
     
     strSubject = "Computers"
     
@@ -1218,7 +1359,9 @@ Sub GenerateWeeklyPlans(ByVal intWeekNumber As Integer, Optional ByVal varSectio
         .Title = "Select or create a folder"
         If .Show = -1 Then
             folderPath = .SelectedItems(1)
+            GWP_Log "Folder selected: " & folderPath
         Else
+            GWP_Log "User cancelled folder picker."
             MsgBox "No folder selected. Exiting."
             Exit Sub
         End If
@@ -1230,7 +1373,9 @@ Sub GenerateWeeklyPlans(ByVal intWeekNumber As Integer, Optional ByVal varSectio
         .Filters.Add "Word Documents", "*.docx"
         If .Show = -1 Then
             templatePath = .SelectedItems(1)
+            GWP_Log "Template path: " & templatePath
         Else
+            GWP_Log "User cancelled template picker."
             MsgBox "No template selected. Exiting."
             Exit Sub
         End If
@@ -1238,6 +1383,7 @@ Sub GenerateWeeklyPlans(ByVal intWeekNumber As Integer, Optional ByVal varSectio
     
     ' Extract the template name
     templateName = Dir(templatePath)
+    GWP_Log "Template name (Dir): " & templateName
     
     ' Create a Word application instance
     On Error Resume Next
@@ -1245,27 +1391,49 @@ Sub GenerateWeeklyPlans(ByVal intWeekNumber As Integer, Optional ByVal varSectio
     If wordApp Is Nothing Then
         Set wordApp = CreateObject(Class:="Word.Application")
     End If
-    On Error GoTo 0
+    GWP_Log "Word app created: " & (Not wordApp Is Nothing)
+    On Error GoTo RestoreSettings
+    
+    originalScreenUpdating = Application.ScreenUpdating
+    originalCalculation = Application.Calculation
+    Application.ScreenUpdating = False
+    Application.Calculation = xlCalculationManual
+    wordApp.DisplayAlerts = wdAlertsNone
     
     DeleteAllRowsInTable tblSandbox
+    Set dicColMap = BuildPlanningDataColumnMap(tblSandbox)
+    m_fWeekCacheSet = True
+    m_datStartDate = Application.WorksheetFunction.XLookup(intWeekNumber, tblClassesPerWeek.ListColumns("Semana ABC").Range, tblClassesPerWeek.ListColumns("Fecha Inicio").Range)
+    m_datEndDate = Application.WorksheetFunction.XLookup(intWeekNumber, tblClassesPerWeek.ListColumns("Semana ABC").Range, tblClassesPerWeek.ListColumns("Fecha Fin").Range)
+    m_strBimesterRun = strBimester
+    Set m_dicBlockDuration = BuildBlockDurationMap()
+    Set m_dicBlockNumbers = BuildWeekBlockNumbersMap(intWeekNumber, tblClassMinutes, tblClassesPerWeek)
+    Set m_dicTBoxProjectInfo = BuildTBoxProjectInfoMap()
+    GWP_Log "Caches built. Starting section loop."
     
     ' Loop through each section in the table and create a Word document
     For Each sec In tblClassMinutes.ListColumns("Grado").DataBodyRange
         strSection = sec
         If sec <> "" Then
             If Not IsSectionIncluded(CStr(sec.value), varSections) Then
+                GWP_Log "Section skipped (not included): " & strSection
                 GoTo NextItem
             End If
-            Debug.Print ("Processing section " & strSection)
+            GWP_Log "Processing section: " & strSection
             
-            FillPlanningDataRecord intWeekNumber, strSection
-            Set dicPlanningData = ReadPlanningRecord(intWeekNumber, strSection)
+            FillPlanningDataRecord intWeekNumber, strSection, dicColMap
+            GWP_Log "FillPlanningDataRecord done for " & strSection
+            Set dicPlanningData = ReadPlanningRecord(intWeekNumber, strSection, dicColMap)
+            GWP_Log "ReadPlanningRecord done for " & strSection
             
             ' Replace "XX" with the actual section in the document name
             newDocName = Replace(templateName, "XX", sec.value)
+            fullSavePath = folderPath & "\" & newDocName
+            GWP_Log "newDocName=" & newDocName & " fullSavePath=" & fullSavePath
             
             ' Create a new Word document from the template
             Set wordDoc = wordApp.Documents.Add(templatePath)
+            GWP_Log "Documents.Add done. wordDoc is " & (Not wordDoc Is Nothing)
             
             With wordDoc
                 ' Fill in the fields
@@ -1280,9 +1448,9 @@ Sub GenerateWeeklyPlans(ByVal intWeekNumber As Integer, Optional ByVal varSectio
                         Case "<bimester_number>"
                             .ContentControls(i).Range.text = strBimesterNumber
                         Case "<start_date>"
-                            .ContentControls(i).Range.text = FormatDateCustom(dicPlanningData.Item("<start_date>"))
+                            .ContentControls(i).Range.text = SafeFormatDate(dicPlanningData.Item("<start_date>"))
                         Case "<end_date>"
-                            .ContentControls(i).Range.text = FormatDateCustom(dicPlanningData.Item("<end_date>"))
+                            .ContentControls(i).Range.text = SafeFormatDate(dicPlanningData.Item("<end_date>"))
                         Case "<topic_class_1>"
                             .ContentControls(i).Range.text = dicPlanningData.Item("<topic_class_1>")
                         Case "<topic_class_2>"
@@ -1326,16 +1494,39 @@ Sub GenerateWeeklyPlans(ByVal intWeekNumber As Integer, Optional ByVal varSectio
                 
                 ' Update the formula field (annotated as 6)
                 .Fields.Update
+                GWP_Log "Fields.Update done. About to SaveAs: " & fullSavePath
                 
                 ' Save the document with the new name
-                .SaveAs folderPath & "\" & newDocName
+                .SaveAs fullSavePath
+                GWP_Log "SaveAs completed."
+                If Dir(fullSavePath) <> "" Then
+                    GWP_Log "File exists after save: YES"
+                Else
+                    GWP_Log "File exists after save: NO (path: " & fullSavePath & ")"
+                End If
                 .Close
+                GWP_Log "Document closed."
             End With
         End If
 NextItem:
     Next sec
     
-PrematureExit:
+    GWP_Log "Section loop finished normally."
+    
+RestoreSettings:
+    If Err.Number <> 0 Then
+        hadError = True
+        GWP_Log "ERROR " & Err.Number & ": " & Err.Description
+        GWP_Log "RestoreSettings reached (after error)."
+    End If
+    m_fWeekCacheSet = False
+    Set m_dicBlockDuration = Nothing
+    Set m_dicBlockNumbers = Nothing
+    Set m_dicTBoxProjectInfo = Nothing
+    Application.ScreenUpdating = originalScreenUpdating
+    Application.Calculation = originalCalculation
+    If originalCalculation = xlCalculationAutomatic Then Application.Calculate
+    On Error GoTo 0
     
     ' Cleanup
     On Error Resume Next
@@ -1343,7 +1534,13 @@ PrematureExit:
     On Error GoTo 0
     Set wordApp = Nothing
     
-    MsgBox "Documents created successfully!"
+    GWP_Log "=== GenerateWeeklyPlans finished. Log file: " & m_GWP_LogPath
+    If hadError Then
+        MsgBox "An error occurred. Check the debug log for details." & vbCrLf & vbCrLf & "Log: " & m_GWP_LogPath, vbExclamation
+    Else
+        MsgBox "Documents created successfully!" & vbCrLf & vbCrLf & "Debug log: " & m_GWP_LogPath
+    End If
+    m_GWP_LogPath = ""
 End Sub
 
 Sub ReplacePlaceholderWithNumberedListInCollection(ByVal doc As word.Document, ByVal cc As word.ContentControl, ByVal colActivities As Collection)
@@ -1395,66 +1592,93 @@ Sub DeleteAllRowsInTable(tbl As ListObject)
         tbl.DataBodyRange.Delete
     End If
 End Sub
-Function ReadPlanningRecord(ByVal intWeekNumber As Integer, ByVal strSection As String) As Scripting.Dictionary
+' Safe read from rowData(1, c). Returns Empty if c is out of range (avoids Subscript out of range).
+' Handles 2D (1 To 1, 1 To n) or 1D row from Excel.
+Private Function RowDataVal(ByVal rowData As Variant, ByVal c As Long) As Variant
+    Dim ub2 As Long
+    RowDataVal = Empty
+    If c < 1 Then Exit Function
+    On Error Resume Next
+    If Not IsArray(rowData) Then On Error GoTo 0: Exit Function
+    ub2 = UBound(rowData, 2)
+    If Err.Number <> 0 Then
+        Err.Clear
+        If UBound(rowData, 1) >= c Then RowDataVal = rowData(c)
+        On Error GoTo 0
+        Exit Function
+    End If
+    If UBound(rowData, 1) >= 1 And ub2 >= c Then RowDataVal = rowData(1, c)
+    On Error GoTo 0
+End Function
 
-Dim rngFoundRecord As Range
-Dim tblPlanningData As ListObject
-Dim intLastRowIndex As Integer
-Dim dicData As New Scripting.Dictionary
-Dim datStartDate As Date
-Dim datEndDate As Date
-Dim strTopicClass1 As String
-Dim strTopicClass2 As String
-Dim strObjectiveClass1 As String
-Dim strObjectiveClass2 As String
-Dim intProjectNumberClass1 As Integer
-Dim intProjectNumberClass2 As Integer
-Dim strProjectNameClass1 As String
-Dim strProjectNameClass2 As String
-Dim intActivityNumberClass1 As Integer
-Dim intActivityNumberClass2 As Integer
-Dim strActivityNameClass1 As String
-Dim strActivityNameClass2 As String
-Dim strDescriptionClass1 As String
-Dim strDescriptionClass2 As String
-Dim strTopicListClass1 As String
-Dim strTopicListClass2 As String
+Function ReadPlanningRecord(ByVal intWeekNumber As Integer, ByVal strSection As String, Optional ByVal dicColMap As Object = Nothing) As Scripting.Dictionary
+    Dim rngFoundRecord As Range
+    Dim tblPlanningData As ListObject
+    Dim intLastRowIndex As Integer
+    Dim dicData As New Scripting.Dictionary
+    Dim rowData As Variant
+    Dim c As Long
 
-Set tblPlanningData = wsSandbox.ListObjects("tblPlanningData")
+    Set tblPlanningData = wsSandbox.ListObjects("tblPlanningData")
+    tblPlanningData.Range.AutoFilter 1, intWeekNumber
+    tblPlanningData.Range.AutoFilter 5, strSection
+    Set rngFoundRecord = tblPlanningData.DataBodyRange.SpecialCells(xlCellTypeVisible)
+    intLastRowIndex = rngFoundRecord.Rows.Count
 
-tblPlanningData.Range.AutoFilter 1, intWeekNumber
-tblPlanningData.Range.AutoFilter 5, strSection
-
-Set rngFoundRecord = tblPlanningData.DataBodyRange.SpecialCells(xlCellTypeVisible)
-intLastRowIndex = rngFoundRecord.Rows.count
-
-If intLastRowIndex > 0 Then
-    dicData.Add "<start_date>", rngFoundRecord(1, GetColumnNumber(tblPlanningData, "<start_date>")).value
-    dicData.Add "<end_date>", rngFoundRecord(1, GetColumnNumber(tblPlanningData, "<end_date>")).value
-    dicData.Add "<topic_class_1>", rngFoundRecord(1, GetColumnNumber(tblPlanningData, "<topic_class_1>")).value
-    dicData.Add "<objective_class_1>", rngFoundRecord(1, GetColumnNumber(tblPlanningData, "<objective_class_1>")).value
-    dicData.Add "<project_tivitynumber_class_1>", rngFoundRecord(1, GetColumnNumber(tblPlanningData, "<project_tivitynumber_class_1>")).value
-    dicData.Add "<project_name_class_1>", rngFoundRecord(1, GetColumnNumber(tblPlanningData, "<project_name_class_1>")).value
-    dicData.Add "<ac_number_class_1>", rngFoundRecord(1, GetColumnNumber(tblPlanningData, "<ac_number_class_1>")).value
-    dicData.Add "<activity_name_class_1>", rngFoundRecord(1, GetColumnNumber(tblPlanningData, "<activity_name_class_1>")).value
-    dicData.Add "<description_class_1>", rngFoundRecord(1, GetColumnNumber(tblPlanningData, "<description_class_1>")).value
-    dicData.Add "<topic_class_2>", rngFoundRecord(1, GetColumnNumber(tblPlanningData, "<topic_class_2>")).value
-    dicData.Add "<objective_class_2>", rngFoundRecord(1, GetColumnNumber(tblPlanningData, "<objective_class_2>")).value
-    dicData.Add "<project_number_class_2>", rngFoundRecord(1, GetColumnNumber(tblPlanningData, "<project_number_class_2>")).value
-    dicData.Add "<project_name_class_2>", rngFoundRecord(1, GetColumnNumber(tblPlanningData, "<project_name_class_2>")).value
-    dicData.Add "<activity_number_class_2>", rngFoundRecord(1, GetColumnNumber(tblPlanningData, "<activity_number_class_2>")).value
-    dicData.Add "<activity_name_class_2>", rngFoundRecord(1, GetColumnNumber(tblPlanningData, "<activity_name_class_2>")).value
-    dicData.Add "<description_class_2>", rngFoundRecord(1, GetColumnNumber(tblPlanningData, "<description_class_2>")).value
-    dicData.Add "<topic_list_class_1>", rngFoundRecord(1, GetColumnNumber(tblPlanningData, "<topic_list_class_1>")).value
-    dicData.Add "<topic_list_class_2>", rngFoundRecord(1, GetColumnNumber(tblPlanningData, "<topic_list_class_2>")).value
-    dicData.Add "<topic_list_class_1_2>", rngFoundRecord(1, GetColumnNumber(tblPlanningData, "<topic_list_class_1_2>")).value
-    dicData.Add "<objective_list_class_1>", rngFoundRecord(1, GetColumnNumber(tblPlanningData, "<objective_list_class_1>")).value
-    dicData.Add "<objective_list_class_2>", rngFoundRecord(1, GetColumnNumber(tblPlanningData, "<objective_list_class_2>")).value
-    dicData.Add "<objective_list_class_1_2>", rngFoundRecord(1, GetColumnNumber(tblPlanningData, "<objective_list_class_1_2>")).value
-    dicData.Add "<description_list_class_1>", rngFoundRecord(1, GetColumnNumber(tblPlanningData, "<description_list_class_1>")).value
-    dicData.Add "<description_list_class_2>", rngFoundRecord(1, GetColumnNumber(tblPlanningData, "<description_list_class_2>")).value
-    dicData.Add "<description_list_class_1_2>", rngFoundRecord(1, GetColumnNumber(tblPlanningData, "<description_list_class_1_2>")).value
-Else
+    If intLastRowIndex > 0 Then
+        rowData = rngFoundRecord.Rows(1).Value
+        c = PlanningColIndex(tblPlanningData, "<start_date>", dicColMap)
+        dicData.Add "<start_date>", RowDataVal(rowData, c)
+        c = PlanningColIndex(tblPlanningData, "<end_date>", dicColMap)
+        dicData.Add "<end_date>", RowDataVal(rowData, c)
+        c = PlanningColIndex(tblPlanningData, "<topic_class_1>", dicColMap)
+        dicData.Add "<topic_class_1>", RowDataVal(rowData, c)
+        c = PlanningColIndex(tblPlanningData, "<objective_class_1>", dicColMap)
+        dicData.Add "<objective_class_1>", RowDataVal(rowData, c)
+        c = PlanningColIndex(tblPlanningData, "<project_tivitynumber_class_1>", dicColMap)
+        dicData.Add "<project_tivitynumber_class_1>", RowDataVal(rowData, c)
+        c = PlanningColIndex(tblPlanningData, "<project_name_class_1>", dicColMap)
+        dicData.Add "<project_name_class_1>", RowDataVal(rowData, c)
+        c = PlanningColIndex(tblPlanningData, "<ac_number_class_1>", dicColMap)
+        dicData.Add "<ac_number_class_1>", RowDataVal(rowData, c)
+        dicData.Add "<activity_number_class_1>", dicData("<ac_number_class_1>")
+        c = PlanningColIndex(tblPlanningData, "<activity_name_class_1>", dicColMap)
+        dicData.Add "<activity_name_class_1>", RowDataVal(rowData, c)
+        c = PlanningColIndex(tblPlanningData, "<description_class_1>", dicColMap)
+        dicData.Add "<description_class_1>", RowDataVal(rowData, c)
+        c = PlanningColIndex(tblPlanningData, "<topic_class_2>", dicColMap)
+        dicData.Add "<topic_class_2>", RowDataVal(rowData, c)
+        c = PlanningColIndex(tblPlanningData, "<objective_class_2>", dicColMap)
+        dicData.Add "<objective_class_2>", RowDataVal(rowData, c)
+        c = PlanningColIndex(tblPlanningData, "<project_number_class_2>", dicColMap)
+        dicData.Add "<project_number_class_2>", RowDataVal(rowData, c)
+        c = PlanningColIndex(tblPlanningData, "<project_name_class_2>", dicColMap)
+        dicData.Add "<project_name_class_2>", RowDataVal(rowData, c)
+        c = PlanningColIndex(tblPlanningData, "<activity_number_class_2>", dicColMap)
+        dicData.Add "<activity_number_class_2>", RowDataVal(rowData, c)
+        c = PlanningColIndex(tblPlanningData, "<activity_name_class_2>", dicColMap)
+        dicData.Add "<activity_name_class_2>", RowDataVal(rowData, c)
+        c = PlanningColIndex(tblPlanningData, "<description_class_2>", dicColMap)
+        dicData.Add "<description_class_2>", RowDataVal(rowData, c)
+        c = PlanningColIndex(tblPlanningData, "<topic_list_class_1>", dicColMap)
+        dicData.Add "<topic_list_class_1>", RowDataVal(rowData, c)
+        c = PlanningColIndex(tblPlanningData, "<topic_list_class_2>", dicColMap)
+        dicData.Add "<topic_list_class_2>", RowDataVal(rowData, c)
+        c = PlanningColIndex(tblPlanningData, "<topic_list_class_1_2>", dicColMap)
+        dicData.Add "<topic_list_class_1_2>", RowDataVal(rowData, c)
+        c = PlanningColIndex(tblPlanningData, "<objective_list_class_1>", dicColMap)
+        dicData.Add "<objective_list_class_1>", RowDataVal(rowData, c)
+        c = PlanningColIndex(tblPlanningData, "<objective_list_class_2>", dicColMap)
+        dicData.Add "<objective_list_class_2>", RowDataVal(rowData, c)
+        c = PlanningColIndex(tblPlanningData, "<objective_list_class_1_2>", dicColMap)
+        dicData.Add "<objective_list_class_1_2>", RowDataVal(rowData, c)
+        c = PlanningColIndex(tblPlanningData, "<description_list_class_1>", dicColMap)
+        dicData.Add "<description_list_class_1>", RowDataVal(rowData, c)
+        c = PlanningColIndex(tblPlanningData, "<description_list_class_2>", dicColMap)
+        dicData.Add "<description_list_class_2>", RowDataVal(rowData, c)
+        c = PlanningColIndex(tblPlanningData, "<description_list_class_1_2>", dicColMap)
+        dicData.Add "<description_list_class_1_2>", RowDataVal(rowData, c)
+    Else
     dicData.Add "<start_date>", ""
     dicData.Add "<end_date>", ""
     dicData.Add "<topic_class_1>", ""
@@ -1462,6 +1686,7 @@ Else
     dicData.Add "<project_tivitynumber_class_1>", ""
     dicData.Add "<project_name_class_1>", ""
     dicData.Add "<ac_number_class_1>", ""
+    dicData.Add "<activity_number_class_1>", ""
     dicData.Add "<activity_name_class_1>", ""
     dicData.Add "<description_class_1>", ""
     dicData.Add "<topic_class_2>", ""
@@ -1483,6 +1708,22 @@ Else
 End If
 Set ReadPlanningRecord = dicData
 
+End Function
+
+' Returns formatted date string, or "" if value is Empty/null/invalid.
+Function SafeFormatDate(ByVal varDate As Variant) As String
+    If IsEmpty(varDate) Or IsNull(varDate) Then
+        SafeFormatDate = ""
+        Exit Function
+    End If
+    If VarType(varDate) = vbString And Len(CStr(varDate)) = 0 Then
+        SafeFormatDate = ""
+        Exit Function
+    End If
+    On Error Resume Next
+    SafeFormatDate = FormatDateCustom(CDate(varDate))
+    If Err.Number <> 0 Then SafeFormatDate = ""
+    On Error GoTo 0
 End Function
 
 Function FormatDateCustom(inputDate As Date) As String
@@ -1636,7 +1877,7 @@ Next
 End Sub
 
 
-Sub FillPlanningDataRecord(ByVal intWeekNumber As Integer, ByVal strSection As String)
+Sub FillPlanningDataRecord(ByVal intWeekNumber As Integer, ByVal strSection As String, Optional ByVal dicColMap As Object = Nothing)
 
 Dim tblPlanningData As ListObject
 Dim tblClassesPerWeek As ListObject
@@ -1680,23 +1921,40 @@ Dim strObjectiveListClass1 As String
 Dim strObjectiveListClass2 As String
 Dim strObjectiveListClass1_2 As String
 Dim booIsPastWeek As Boolean
+Dim arr2D() As Variant
+Dim numCols As Long
+Dim c As Long
 
 Set tblPlanningData = wsSandbox.ListObjects("tblPlanningData")
-Set tblClassesPerWeek = wsClassesPerWeek.ListObjects("tblClassesPerWeek")
-strBimester = Application.WorksheetFunction.XLookup(intWeekNumber, tblClassesPerWeek.ListColumns("Semana ABC").DataBodyRange, _
-    tblClassesPerWeek.ListColumns("Bimestre").DataBodyRange)
-
+If m_fWeekCacheSet Then
+    strBimester = m_strBimesterRun
+    datStartDate = m_datStartDate
+    datEndDate = m_datEndDate
+    If Not m_dicBlockNumbers Is Nothing And m_dicBlockNumbers.Exists(strSection) Then
+        strBlock1 = m_dicBlockNumbers(strSection)(0)
+        strBlock2 = m_dicBlockNumbers(strSection)(1)
+    Else
+        strBlock1 = GetBlockNumber(intWeekNumber, strSection, 1)
+        strBlock2 = GetBlockNumber(intWeekNumber, strSection, 2)
+    End If
+Else
+    Set tblClassesPerWeek = wsClassesPerWeek.ListObjects("tblClassesPerWeek")
+    strBimester = Application.WorksheetFunction.XLookup(intWeekNumber, tblClassesPerWeek.ListColumns("Semana ABC").DataBodyRange, _
+        tblClassesPerWeek.ListColumns("Bimestre").DataBodyRange)
+    datStartDate = Application.WorksheetFunction.XLookup(intWeekNumber, tblClassesPerWeek.ListColumns("Semana ABC").Range, tblClassesPerWeek.ListColumns("Fecha Inicio").Range)
+    datEndDate = Application.WorksheetFunction.XLookup(intWeekNumber, tblClassesPerWeek.ListColumns("Semana ABC").Range, tblClassesPerWeek.ListColumns("Fecha Fin").Range)
+    strBlock1 = GetBlockNumber(intWeekNumber, strSection, 1)
+    strBlock2 = GetBlockNumber(intWeekNumber, strSection, 2)
+End If
 Set rowRecord = tblPlanningData.ListRows.Add(position:=tblPlanningData.ListRows.count + 1, AlwaysInsert:=True)
+numCols = tblPlanningData.ListColumns.Count
+ReDim arr2D(1 To 1, 1 To numCols)
 
-rowRecord.Range(1, GetColumnNumber(tblPlanningData, "<week_number>")) = intWeekNumber
-rowRecord.Range(1, GetColumnNumber(tblPlanningData, "<grade>")) = strSection
-rowRecord.Range(1, GetColumnNumber(tblPlanningData, "<bimester_number>")) = strBimester
-datStartDate = Application.WorksheetFunction.XLookup(intWeekNumber, tblClassesPerWeek.ListColumns("Semana ABC").Range, tblClassesPerWeek.ListColumns("Fecha Inicio").Range)
-rowRecord.Range(1, GetColumnNumber(tblPlanningData, "<start_date>")) = datStartDate
-datEndDate = Application.WorksheetFunction.XLookup(intWeekNumber, tblClassesPerWeek.ListColumns("Semana ABC").Range, tblClassesPerWeek.ListColumns("Fecha Fin").Range)
-rowRecord.Range(1, GetColumnNumber(tblPlanningData, "<end_date>")) = datEndDate
-strBlock1 = GetBlockNumber(intWeekNumber, strSection, 1)
-strBlock2 = GetBlockNumber(intWeekNumber, strSection, 2)
+c = PlanningColIndex(tblPlanningData, "<week_number>", dicColMap): If c > 0 Then arr2D(1, c) = intWeekNumber
+c = PlanningColIndex(tblPlanningData, "<grade>", dicColMap): If c > 0 Then arr2D(1, c) = strSection
+c = PlanningColIndex(tblPlanningData, "<bimester_number>", dicColMap): If c > 0 Then arr2D(1, c) = strBimester
+c = PlanningColIndex(tblPlanningData, "<start_date>", dicColMap): If c > 0 Then arr2D(1, c) = datStartDate
+c = PlanningColIndex(tblPlanningData, "<end_date>", dicColMap): If c > 0 Then arr2D(1, c) = datEndDate
 intBlock1Duraction = GetBlockDuration(strBlock1)
 intBlock2Duration = GetBlockDuration(strBlock2)
 strGrade = Left(strSection, Len(strSection) - 1)
@@ -1728,16 +1986,16 @@ Else
     strObjectiveListClass1 = Replace(CollToLineList(colObjectiveListClass1), "<project_name>", strProjectName1, 1, -1, vbTextCompare)
     strDescriptionListClass1 = Replace(CollToLineList(colDescriptionListClass1), "<project_name>", strProjectName1, 1, -1, vbTextCompare)
 End If
-rowRecord.Range(1, GetColumnNumber(tblPlanningData, "<topic_class_1>")) = strActivityName1
-rowRecord.Range(1, GetColumnNumber(tblPlanningData, "<activity_name_class_1>")) = strActivityName1
-rowRecord.Range(1, GetColumnNumber(tblPlanningData, "<project_number_class_1>")) = strProjectNumber1
-rowRecord.Range(1, GetColumnNumber(tblPlanningData, "<activity_number_class_1>")) = strActivityNumber1
-rowRecord.Range(1, GetColumnNumber(tblPlanningData, "<objective_class_1>")) = strObjective1
-rowRecord.Range(1, GetColumnNumber(tblPlanningData, "<description_class_1>")) = strDescription1
-rowRecord.Range(1, GetColumnNumber(tblPlanningData, "<project_name_class_1>")) = strProjectName1
-rowRecord.Range(1, GetColumnNumber(tblPlanningData, "<topic_list_class_1>")) = strTopicListClass1
-rowRecord.Range(1, GetColumnNumber(tblPlanningData, "<objective_list_class_1>")) = strObjectiveListClass1
-rowRecord.Range(1, GetColumnNumber(tblPlanningData, "<description_list_class_1>")) = strDescriptionListClass1
+c = PlanningColIndex(tblPlanningData, "<topic_class_1>", dicColMap): If c > 0 Then arr2D(1, c) = strActivityName1
+c = PlanningColIndex(tblPlanningData, "<activity_name_class_1>", dicColMap): If c > 0 Then arr2D(1, c) = strActivityName1
+c = PlanningColIndex(tblPlanningData, "<project_number_class_1>", dicColMap): If c > 0 Then arr2D(1, c) = strProjectNumber1
+c = PlanningColIndex(tblPlanningData, "<activity_number_class_1>", dicColMap): If c > 0 Then arr2D(1, c) = strActivityNumber1
+c = PlanningColIndex(tblPlanningData, "<objective_class_1>", dicColMap): If c > 0 Then arr2D(1, c) = strObjective1
+c = PlanningColIndex(tblPlanningData, "<description_class_1>", dicColMap): If c > 0 Then arr2D(1, c) = strDescription1
+c = PlanningColIndex(tblPlanningData, "<project_name_class_1>", dicColMap): If c > 0 Then arr2D(1, c) = strProjectName1
+c = PlanningColIndex(tblPlanningData, "<topic_list_class_1>", dicColMap): If c > 0 Then arr2D(1, c) = strTopicListClass1
+c = PlanningColIndex(tblPlanningData, "<objective_list_class_1>", dicColMap): If c > 0 Then arr2D(1, c) = strObjectiveListClass1
+c = PlanningColIndex(tblPlanningData, "<description_list_class_1>", dicColMap): If c > 0 Then arr2D(1, c) = strDescriptionListClass1
 
 If strBlock2 = "" Then
     strActivityName2 = ""
@@ -1767,16 +2025,16 @@ Else
     strDescriptionListClass2 = Replace(CollToLineList(colDescriptionListClass2), "<project_name>", strProjectName2, 1, -1, vbTextCompare)
 End If
 
-rowRecord.Range(1, GetColumnNumber(tblPlanningData, "<topic_class_2>")) = strActivityName2
-rowRecord.Range(1, GetColumnNumber(tblPlanningData, "<activity_name_class_2>")) = strActivityName2
-rowRecord.Range(1, GetColumnNumber(tblPlanningData, "<project_number_class_2>")) = strProjectNumber2
-rowRecord.Range(1, GetColumnNumber(tblPlanningData, "<activity_number_class_2>")) = strActivityNumber2
-rowRecord.Range(1, GetColumnNumber(tblPlanningData, "<objective_class_2>")) = strObjective2
-rowRecord.Range(1, GetColumnNumber(tblPlanningData, "<description_class_2>")) = strDescription2
-rowRecord.Range(1, GetColumnNumber(tblPlanningData, "<project_name_class_2>")) = strProjectName2
-rowRecord.Range(1, GetColumnNumber(tblPlanningData, "<topic_list_class_2>")) = strTopicListClass2
-rowRecord.Range(1, GetColumnNumber(tblPlanningData, "<objective_list_class_2>")) = strObjectiveListClass2
-rowRecord.Range(1, GetColumnNumber(tblPlanningData, "<description_list_class_2>")) = strDescriptionListClass2
+c = PlanningColIndex(tblPlanningData, "<topic_class_2>", dicColMap): If c > 0 Then arr2D(1, c) = strActivityName2
+c = PlanningColIndex(tblPlanningData, "<activity_name_class_2>", dicColMap): If c > 0 Then arr2D(1, c) = strActivityName2
+c = PlanningColIndex(tblPlanningData, "<project_number_class_2>", dicColMap): If c > 0 Then arr2D(1, c) = strProjectNumber2
+c = PlanningColIndex(tblPlanningData, "<activity_number_class_2>", dicColMap): If c > 0 Then arr2D(1, c) = strActivityNumber2
+c = PlanningColIndex(tblPlanningData, "<objective_class_2>", dicColMap): If c > 0 Then arr2D(1, c) = strObjective2
+c = PlanningColIndex(tblPlanningData, "<description_class_2>", dicColMap): If c > 0 Then arr2D(1, c) = strDescription2
+c = PlanningColIndex(tblPlanningData, "<project_name_class_2>", dicColMap): If c > 0 Then arr2D(1, c) = strProjectName2
+c = PlanningColIndex(tblPlanningData, "<topic_list_class_2>", dicColMap): If c > 0 Then arr2D(1, c) = strTopicListClass2
+c = PlanningColIndex(tblPlanningData, "<objective_list_class_2>", dicColMap): If c > 0 Then arr2D(1, c) = strObjectiveListClass2
+c = PlanningColIndex(tblPlanningData, "<description_list_class_2>", dicColMap): If c > 0 Then arr2D(1, c) = strDescriptionListClass2
 
 If strTopicListClass1 = strTopicListClass2 Then
     strTopicListClass1_2 = strTopicListClass1
@@ -1796,9 +2054,10 @@ Else
     strDescriptionListClass1_2 = strDescriptionListClass1 & vbCrLf & strDescriptionListClass2
 End If
 
-rowRecord.Range(1, GetColumnNumber(tblPlanningData, "<topic_list_class_1_2>")) = strTopicListClass1_2
-rowRecord.Range(1, GetColumnNumber(tblPlanningData, "<objective_list_class_1_2>")) = strObjectiveListClass1_2
-rowRecord.Range(1, GetColumnNumber(tblPlanningData, "<description_list_class_1_2>")) = strDescriptionListClass1_2
+c = PlanningColIndex(tblPlanningData, "<topic_list_class_1_2>", dicColMap): If c > 0 Then arr2D(1, c) = strTopicListClass1_2
+c = PlanningColIndex(tblPlanningData, "<objective_list_class_1_2>", dicColMap): If c > 0 Then arr2D(1, c) = strObjectiveListClass1_2
+c = PlanningColIndex(tblPlanningData, "<description_list_class_1_2>", dicColMap): If c > 0 Then arr2D(1, c) = strDescriptionListClass1_2
+rowRecord.Range.Value = arr2D
 
 End Sub
 
@@ -1898,44 +2157,48 @@ CleanActivityName = strCleandedActivityName
 End Function
 
 Function GetTBoxProjectInfo(ByVal strProjectNumber As String, ByVal strActivityNumber As String, ByVal strGrade As String) As Variant
+    Dim tblTBoxActivities As ListObject
+    Dim strObjective As String
+    Dim strDescription As String
+    Dim r As Variant
+    Dim rngFilteredRange As Range
+    Dim strProjectName As String
+    Dim key As String
 
-Dim tblTBoxActivities As ListObject
-Dim strObjective As String
-Dim strDescription As String
-Dim r As Variant
-Dim rngFilteredRange As Range
-Dim strProjectName As String
+    If Not m_dicTBoxProjectInfo Is Nothing Then
+        key = CStr(strGrade) & "|" & CStr(strProjectNumber) & "|" & CStr(strActivityNumber)
+        If m_dicTBoxProjectInfo.Exists(key) Then
+            r = m_dicTBoxProjectInfo(key)
+            GetTBoxProjectInfo = r
+            Exit Function
+        End If
+        GetTBoxProjectInfo = Array("", "", "")
+        Exit Function
+    End If
 
-Set tblTBoxActivities = wsTBoxActivities.ListObjects("tblTBoxActivities")
-
-If strProjectNumber <> "" And strActivityNumber <> "" Then
-
-    tblTBoxActivities.Range.AutoFilter Field:=1, Criteria1:=strGrade
-    tblTBoxActivities.Range.AutoFilter Field:=2, Criteria1:=strProjectNumber
-    tblTBoxActivities.Range.AutoFilter Field:=5, Criteria1:=strActivityNumber
-    On Error Resume Next
-    Set rngFilteredRange = tblTBoxActivities.DataBodyRange.SpecialCells(xlCellTypeVisible)
-    On Error GoTo 0
-    If Not rngFilteredRange Is Nothing Then
-        strObjective = rngFilteredRange(1, 7)
-        strDescription = rngFilteredRange(1, 8)
-        strProjectName = rngFilteredRange(1, 3)
+    Set tblTBoxActivities = wsTBoxActivities.ListObjects("tblTBoxActivities")
+    If strProjectNumber <> "" And strActivityNumber <> "" Then
+        tblTBoxActivities.Range.AutoFilter Field:=1, Criteria1:=strGrade
+        tblTBoxActivities.Range.AutoFilter Field:=2, Criteria1:=strProjectNumber
+        tblTBoxActivities.Range.AutoFilter Field:=5, Criteria1:=strActivityNumber
+        On Error Resume Next
+        Set rngFilteredRange = tblTBoxActivities.DataBodyRange.SpecialCells(xlCellTypeVisible)
+        On Error GoTo 0
+        If Not rngFilteredRange Is Nothing Then
+            strObjective = rngFilteredRange(1, 7)
+            strDescription = rngFilteredRange(1, 8)
+            strProjectName = rngFilteredRange(1, 3)
+        Else
+            strObjective = ""
+            strDescription = ""
+            strProjectName = ""
+        End If
     Else
         strObjective = ""
         strDescription = ""
         strProjectName = ""
     End If
-
-Else
-
-    strObjective = ""
-    strDescription = ""
-    strProjectName = ""
-End If
-    
-
-GetTBoxProjectInfo = Array(strObjective, strDescription, strProjectName)
-
+    GetTBoxProjectInfo = Array(strObjective, strDescription, strProjectName)
 End Function
 
 Function ApplyTwoLevelAutoFilterToArray(dataRange As Range, col1Index As Long, col1Criteria As String, _
@@ -2038,31 +2301,34 @@ Function GetProjectAndActivityNumber(inputText As String) As Variant
     
 End Function
 
-Function GetActivityOnPastWeek(ByVal datWeekStartDate As Date, ByVal datWeekEndDate As Date, ByVal strSection As String, ByVal strBlock As String)
+Function GetActivityOnPastWeek(ByVal datWeekStartDate As Date, ByVal datWeekEndDate As Date, ByVal strSection As String, ByVal strBlock As String) As String
+    Dim tblTarget As ListObject
+    Dim arrDate As Variant
+    Dim arrBlock As Variant
+    Dim arrActivity As Variant
+    Dim i As Long
+    Dim strActivity As String
 
-Dim wsTarget As Worksheet
-Dim strGrade As String
-Dim strSectionLetter As String
-Dim tblTarget As ListObject
-Dim rngDate As Range
-Dim rngBlockItem As Range
-Dim intRowIndex As Integer
-Dim strActivity As String
-
-Set tblTarget = GetPlanTable(strSection)
-
-For Each rngDate In tblTarget.ListColumns("Date").DataBodyRange
-    If (rngDate.value >= datWeekStartDate) And (rngDate.value <= datWeekEndDate) Then
-        intRowIndex = rngDate.row - tblTarget.HeaderRowRange.row
-        Set rngBlockItem = tblTarget.ListColumns("Block").DataBodyRange(intRowIndex, 1)
-        If rngBlockItem.value = strBlock Then
-            strActivity = tblTarget.ListColumns("Current Activity").DataBodyRange(intRowIndex, 1)
-        End If
+    strActivity = ""
+    Set tblTarget = GetPlanTable(strSection)
+    If tblTarget.DataBodyRange Is Nothing Then
+        GetActivityOnPastWeek = strActivity
+        Exit Function
     End If
-Next
-
-GetActivityOnPastWeek = strActivity
-
+    arrDate = tblTarget.ListColumns("Date").DataBodyRange.Value
+    arrBlock = tblTarget.ListColumns("Block").DataBodyRange.Value
+    arrActivity = tblTarget.ListColumns("Current Activity").DataBodyRange.Value
+    For i = 1 To UBound(arrDate, 1)
+        If IsDate(arrDate(i, 1)) Then
+            If CDate(arrDate(i, 1)) >= datWeekStartDate And CDate(arrDate(i, 1)) <= datWeekEndDate Then
+                If CStr(arrBlock(i, 1)) = strBlock Then
+                    strActivity = CStr(arrActivity(i, 1))
+                    Exit For
+                End If
+            End If
+        End If
+    Next i
+    GetActivityOnPastWeek = strActivity
 End Function
 
 Function GetActivityOnFutureWeek(ByVal datWeekStartDate As Date, ByVal datWeekEndDate As Date, ByVal strSection As String, ByVal strBlock As String, _
@@ -2190,6 +2456,31 @@ End If
 
 GetColumnNumber = intColNumber
 
+End Function
+
+' Builds a dictionary mapping tblPlanningData header text to 1-based column index. Use for fast lookups in FillPlanningDataRecord and ReadPlanningRecord.
+Function BuildPlanningDataColumnMap(ByVal tbl As ListObject) As Scripting.Dictionary
+    Dim dic As New Scripting.Dictionary
+    Dim c As Long
+    Dim headerVal As String
+    For c = 1 To tbl.HeaderRowRange.Columns.Count
+        headerVal = CStr(tbl.HeaderRowRange(1, c).Value)
+        If Len(headerVal) > 0 Then
+            If Not dic.Exists(headerVal) Then dic.Add headerVal, c
+        End If
+    Next c
+    Set BuildPlanningDataColumnMap = dic
+End Function
+
+' Returns 1-based column index for tblPlanningData: from dicColMap if provided, else GetColumnNumber.
+Function PlanningColIndex(ByVal tbl As ListObject, ByVal strColumnName As String, Optional ByVal dicColMap As Object = Nothing) As Long
+    If Not dicColMap Is Nothing Then
+        If dicColMap.Exists(strColumnName) Then
+            PlanningColIndex = dicColMap(strColumnName)
+            Exit Function
+        End If
+    End If
+    PlanningColIndex = GetColumnNumber(tbl, strColumnName)
 End Function
 
 ' Builds dictionary lookups for UpdateTblMaster: exact and placeholder keys from tblGeneric,
