@@ -1334,6 +1334,8 @@ Sub GenerateWeeklyPlans(ByVal intStartWeek As Integer, ByVal intEndWeek As Integ
     Dim hadError As Boolean
     Dim weekFolderPath As String
     Dim fso As Object
+    Dim currentWeek As Integer
+    Dim currentSection As String
     
     hadError = False
     m_GWP_LogPath = Environ("TEMP") & "\GenerateWeeklyPlans_debug.log"
@@ -1411,8 +1413,11 @@ Sub GenerateWeeklyPlans(ByVal intStartWeek As Integer, ByVal intEndWeek As Integ
     Set fso = CreateObject("Scripting.FileSystemObject")
     
     For intWeek = intStartWeek To intEndWeek
+        currentWeek = 0
+        currentSection = ""
         If Not WeekExistsInClassesPerWeek(intWeek, tblClassesPerWeek) Then
             GWP_Log "Week " & intWeek & " skipped (not found in tblClassesPerWeek)"
+            Debug.Print "Week " & intWeek & " - skipped (not in schedule)"
             GoTo ContinueNextWeek
         End If
         strBimester = Application.WorksheetFunction.XLookup(intWeek, tblClassesPerWeek.ListColumns("Semana ABC").DataBodyRange, _
@@ -1440,9 +1445,13 @@ Sub GenerateWeeklyPlans(ByVal intStartWeek As Integer, ByVal intEndWeek As Integ
             If sec <> "" Then
                 If Not IsSectionIncluded(CStr(sec.value), varSections) Then
                     GWP_Log "Section skipped (not included): " & strSection
+                    Debug.Print "Week " & intWeek & ", Grade " & strSection & " - skipped"
                     GoTo NextItem
                 End If
+                currentWeek = intWeek
+                currentSection = strSection
                 GWP_Log "Processing section: " & strSection
+                Debug.Print "Week " & intWeek & ", Grade " & strSection & " - processing..."
                 
                 FillPlanningDataRecord intWeek, strSection, dicColMap
                 GWP_Log "FillPlanningDataRecord done for " & strSection
@@ -1530,6 +1539,7 @@ Sub GenerateWeeklyPlans(ByVal intStartWeek As Integer, ByVal intEndWeek As Integ
                     End If
                     .Close
                     GWP_Log "Document closed."
+                    Debug.Print "Week " & intWeek & ", Grade " & strSection & " - OK"
                 End With
             End If
 NextItem:
@@ -1542,6 +1552,7 @@ ContinueNextWeek:
 RestoreSettings:
     If Err.Number <> 0 Then
         hadError = True
+        Debug.Print "Week " & currentWeek & ", Grade " & currentSection & " - FAILED"
         GWP_Log "ERROR " & Err.Number & ": " & Err.Description
         GWP_Log "RestoreSettings reached (after error)."
     End If
