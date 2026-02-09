@@ -2590,7 +2590,7 @@ Sub UpdateMasterLists()
     Application.Calculation = xlCalculationManual
 
     BuildMasterListLookups tblGeneric, tblTBox, dGenericExact, dGenericPlaceholder, dTBox
-    arrGrade = Array("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "DC3")
+    arrGrade = Array("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "DC3A", "DC3B")
     For i = 0 To UBound(arrGrade)
         strGrade = arrGrade(i)
         Set tblMaster = wsMasterList.ListObjects("tblMasterList" & strGrade)
