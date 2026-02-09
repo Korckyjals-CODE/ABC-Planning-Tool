@@ -10,6 +10,7 @@ Private m_strBimesterRun As String
 Private m_fWeekCacheSet As Boolean
 Private m_dicTBoxProjectInfo As Object
 Private m_GWP_LogPath As String
+Private m_GWP_Debug As Boolean
 
 ' Appends a timestamped line to the debug log file. No-op if m_GWP_LogPath is empty.
 Sub GWP_Log(ByVal msg As String)
@@ -1301,7 +1302,7 @@ Sub GenerateUnitPlans()
     MsgBox "Documents created successfully!"
 End Sub
 
-Sub GenerateWeeklyPlans(ByVal intStartWeek As Integer, ByVal intEndWeek As Integer, Optional ByVal varSections As Variant = Empty)
+Sub GenerateWeeklyPlans(ByVal intStartWeek As Integer, ByVal intEndWeek As Integer, Optional ByVal varSections As Variant = Empty, Optional ByVal blnDebug As Boolean = False)
     Dim ws As Worksheet
     Dim tbl As ListObject
     Dim tblClassMinutes As ListObject
@@ -1338,8 +1339,10 @@ Sub GenerateWeeklyPlans(ByVal intStartWeek As Integer, ByVal intEndWeek As Integ
     Dim currentSection As String
     
     hadError = False
+    m_GWP_Debug = blnDebug
     m_GWP_LogPath = Environ("TEMP") & "\GenerateWeeklyPlans_debug.log"
     GWP_Log "=== GenerateWeeklyPlans started. Week range=" & intStartWeek & "-" & intEndWeek
+    If blnDebug Then Stop
     
     If intStartWeek > intEndWeek Then
         GWP_Log "Invalid range: start week " & intStartWeek & " > end week " & intEndWeek
@@ -1396,7 +1399,7 @@ Sub GenerateWeeklyPlans(ByVal intStartWeek As Integer, ByVal intEndWeek As Integ
         Set wordApp = CreateObject(Class:="Word.Application")
     End If
     GWP_Log "Word app created: " & (Not wordApp Is Nothing)
-    On Error GoTo RestoreSettings
+    If m_GWP_Debug Then On Error GoTo 0 Else On Error GoTo RestoreSettings
     
     originalScreenUpdating = Application.ScreenUpdating
     originalCalculation = Application.Calculation
@@ -1578,6 +1581,7 @@ RestoreSettings:
         MsgBox "Documents created successfully!" & vbCrLf & vbCrLf & "Debug log: " & m_GWP_LogPath
     End If
     m_GWP_LogPath = ""
+    m_GWP_Debug = False
 End Sub
 
 Sub ReplacePlaceholderWithNumberedListInCollection(ByVal doc As word.Document, ByVal cc As word.ContentControl, ByVal colActivities As Collection)
